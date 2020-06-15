@@ -1,46 +1,41 @@
 #include "row.h"
+#include <iostream>
+
+Row::Row(int size)
+{
+	columns.reserve(size);
+}
 
 Row::Row(long long timestamp)
 {
-	values.push_back(pair<ColumnType, long long>(ColumnType::TIMESTAMP, (long long) timestamp));
+	columns.push_back(timestamp);
 }
 
-void Row::putTimestamp(long long value)
-{
-	put(ColumnType::TIMESTAMP, (long long) value);
+Row::Row(long long timestamp, vector<RowValue> rowValues)
+	: Row(timestamp)
+{	
+	columns.insert(end(columns), begin(rowValues), end(rowValues));
 }
 
-void Row::putInt(int value)
+Row::Row(vector<RowValue> rowValues)
 {
-	put(ColumnType::INT, (int) value);
+	columns.insert(end(columns), begin(rowValues), end(rowValues));
 }
 
-void Row::putLong(long long value)
+void Row::put(RowValue value)
 {
-	put(ColumnType::LONG, (long long) value);
+	columns.push_back(value);
 }
 
-void Row::putDouble(double value)
+ostream& operator<<(ostream& os, Row const& row)
 {
-	put(ColumnType::DOUBLE, (double) value);
-}
+	for (RowValue val : row.columns)
+	{
+		visit([&](auto&& arg) {
+			os << arg;
+			os << string(" ");
+		}, val);
+	}
 
-void Row::putSymbol(string value)
-{
-	put(ColumnType::SYMBOL, value);
-}
-
-void Row::putString(string value)
-{
-	put(ColumnType::STRING, value);
-}
-
-vector<pair<ColumnType, RowValue>> Row::getValues()
-{
-	return values;
-}
-
-void Row::put(ColumnType type, RowValue value)
-{
-	values.push_back(pair(type, value));
+	return os;
 }

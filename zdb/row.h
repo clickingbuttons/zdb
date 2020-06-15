@@ -1,26 +1,23 @@
 #pragma once
 
-#include "schema.h"
 #include <string>
 #include <variant>
 #include <utility>
+#include <vector>
 
 using namespace std;
 
-typedef variant<int, long long, float, double, string> RowValue;
+using RowValue = variant<int, long long, float, double, string>;
 
 class Row
 {
 public:
+	Row(int size);
 	Row(long long timestamp);
-	void putTimestamp(long long value);
-	void putInt(int value);
-	void putLong(long long value);
-	void putDouble(double value);
-	void putSymbol(string value);
-	void putString(string value);
-	vector<pair<ColumnType, RowValue>> getValues();
-private:
-	vector<pair<ColumnType, RowValue>> values;
-	void put(ColumnType type, RowValue value);
+	Row(long long timestamp, vector<RowValue> rowValues);
+	Row(vector<RowValue> rowValues);
+	void put(RowValue value);
+	vector<RowValue> columns;
 };
+
+ostream& operator<<(ostream& os, Row const& row);

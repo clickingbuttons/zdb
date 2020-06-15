@@ -40,3 +40,10 @@ string Schema::getColumnTypeName(ColumnType c)
 {
 	return columnTypeStrings.at(c);
 }
+
+Schema& Schema::operator=(const Schema& other)
+{
+	name = string(other.name);
+	columns = other.columns;
+	return *this;
+}

@@ -39,7 +39,7 @@ void Config::read()
 	string line;
 	while (getline(infile, line))
 	{
-		trim(line);
+		line = trim(line);
 		if (line.empty() || line[0] == '#' || line[0] == ';') // comment
 		{
 			continue;
@@ -48,13 +48,13 @@ void Config::read()
 		if (line[0] == '[')
 		{
 			// New section
-			int closeBrace = line.find(']');
+			size_t closeBrace = line.find(']');
 			line = line.substr(1, closeBrace == string::npos ? line.length() : closeBrace - 1);
 			sectionName = trim(line);
 		}
 		else
 		{
-			int separatorIndex = line.find('=');
+			size_t separatorIndex = line.find('=');
 			// Invalid option: no value
 			if (separatorIndex == string::npos)
 			{
@@ -72,10 +72,10 @@ void Config::write()
 {
 	ofstream outfile(path);
 
-	for (auto const& [section, values] : sections)
+	for (auto const& [section, columns] : sections)
 	{
 		outfile << '[' << section << ']' << endl;
-		for (auto const& [key, val] : values)
+		for (auto const& [key, val] : columns)
 		{
 			outfile << trim(key) << '=' << trim(val) << std::endl;
 		}

@@ -31,6 +31,8 @@ public:
 	vector<Column> getColumns();
 	string getName();
 	static string getColumnTypeName(ColumnType c);
+	// Copy assignment operator.
+	Schema& operator=(const Schema& other);
 private:
 	string name;
 	vector<Column> columns;
