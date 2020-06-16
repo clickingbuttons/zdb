@@ -6,9 +6,18 @@
 #include <filesystem>
 #include <vector>
 #include <unordered_map>
+#include <fstream>
 
 using namespace std;
 using namespace filesystem;
+
+enum class PartitionBy
+{
+	DAY,
+	WEEK,
+	MONTH,
+	YEAR
+};
 
 class Table {
 public:
@@ -19,13 +28,22 @@ public:
 	void write(vector<Row> rows);
 	void flush();
 private:
-	void readSymbolTable();
-	Schema schema;
-	unique_ptr<Config> meta;
+	// Directory this is stored on disk
 	path dir;
-	path getColumnFile(Column column);
-	path symbolFile;
-	vector<Row> rows;
+	Schema schema;
+	// Metadata saved to _meta
+	Config meta;
+	// Symbol table saved to _symbols. Stored twice in RAM since there is no array-backed map
+	path symbolPath;
+	void readSymbolFile();
 	unordered_map<string, size_t> symbolSet;
 	vector<string> symbols;
+	// Helper to get path for column based on its type
+	path getColumnFile(Column column);
+	// Cache column files to avoid open/close on every read/write
+	vector<path> columnPaths;
+	// Used to hold `write`s until `flush`
+	vector<Row> rowBuffer;
+	// Used to hold row count until `flush`
+	size_t rowCount;
 };

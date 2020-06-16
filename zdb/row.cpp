@@ -27,6 +27,11 @@ void Row::put(RowValue value)
 	columns.push_back(value);
 }
 
+bool Row::operator<(const Row& other) const
+{
+	return columns[0] < other.columns[0];
+}
+
 ostream& operator<<(ostream& os, Row const& row)
 {
 	for (RowValue val : row.columns)

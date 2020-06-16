@@ -18,6 +18,7 @@ public:
 	Row(vector<RowValue> rowValues);
 	void put(RowValue value);
 	vector<RowValue> columns;
+	bool operator < (const Row& other) const;
 };
 
 ostream& operator<<(ostream& os, Row const& row);

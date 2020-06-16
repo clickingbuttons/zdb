@@ -5,16 +5,17 @@
 #include <string>
 
 using namespace std;
+using namespace filesystem;
 
 class Config {
 public:
-	Config(filesystem::path path);
+	Config(path path);
 	void read();
 	void write();
 	string getOption(string section, string option) const;
 	string getOption(string section, string option, string default) const;
 	void setOption(string section, string key, string val);
 private:
-	filesystem::path path;
+	path path;
 	map<string, map<string, string>> sections;
 };

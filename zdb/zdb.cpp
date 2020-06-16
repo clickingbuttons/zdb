@@ -2,7 +2,6 @@
 #include <iostream>
 #include <set>
 #include <sstream>
-#include <algorithm>
 
 using namespace std;
 
@@ -27,9 +26,9 @@ int main()
 	agg1d.write({
 		//  ts  ,   sym   , open, high, low, close, close^, volume
 		// ^close unadjusted
+		Row(27001, { "MSFT", 40.0, 50.0, 30.0, 44.0, 44.0, 44000LL}),
 		Row(27000, { "AAPL", 30.0, 40.0, 20.0, 34.0, 34.0, 34000LL}),
 		Row(27000, { "AAPL", 40.0, 50.0, 30.0, 44.0, 44.0, 44000LL}),
-		Row(27001, { "MSFT", 40.0, 50.0, 30.0, 44.0, 44.0, 44000LL}),
 	});
 	agg1d.flush();
 

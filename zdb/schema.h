@@ -28,8 +28,8 @@ public:
 	Schema(string name);
 	void addColumn(Column c);
 	void addColumn(string name, ColumnType type);
-	vector<Column> getColumns();
-	string getName();
+	vector<Column> getColumns() const;
+	string getName() const;
 	static string getColumnTypeName(ColumnType c);
 	// Copy assignment operator.
 	Schema& operator=(const Schema& other);

@@ -17,12 +17,12 @@ void Schema::addColumn(string name, ColumnType type)
 	addColumn(Column({ name, type }));
 }
 
-vector<Column> Schema::getColumns()
+vector<Column> Schema::getColumns() const
 {
 	return columns;
 }
 
-string Schema::getName()
+string Schema::getName() const
 {
 	return name;
 }
