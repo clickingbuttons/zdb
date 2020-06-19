@@ -1,13 +1,10 @@
 #pragma once
 
+#include "schema.h"
 #include <string>
-#include <variant>
-#include <utility>
 #include <vector>
 
 using namespace std;
-
-using RowValue = variant<int, long long, float, double, string>;
 
 class Row
 {
@@ -19,6 +16,5 @@ public:
 	void put(RowValue value);
 	vector<RowValue> columns;
 	bool operator < (const Row& other) const;
+	string toString(Schema const& schema);
 };
-
-ostream& operator<<(ostream& os, Row const& row);

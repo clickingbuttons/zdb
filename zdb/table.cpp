@@ -4,28 +4,11 @@
 #include <variant>
 #include <algorithm>
 #include <cctype>
-#include <chrono>
-#include <iomanip>
-#include <sstream>
-
-string serializeTimePoint(const chrono::system_clock::time_point& time, const std::string& format)
-{
-	time_t tt = chrono::system_clock::to_time_t(time);
-	tm tm = *gmtime(&tt); //GMT (UTC)
-	//std::tm tm = *std::localtime(&tt); //Locale time-zone, usually UTC by default.
-	stringstream ss;
-	ss << put_time(&tm, format.c_str());
-	return ss.str();
-}
-
-//chrono::milliseconds millisec(1073077200000);
-//chrono::time_point<chrono::system_clock> input(millisec);
-//cout << serializeTimePoint(input, "UTC: %Y-%m-%d %H:%M:%S") << endl;
 
 path getDir(const Schema& s, const Config& globalConfig)
 {
 	string dbPath = globalConfig.getOption("filesystem", "path", current_path().string());
-	path dir = path(dbPath).append("data").append(s.getName());
+	path dir = path(dbPath).append("data").append(s.name);
 	create_directories(dir);
 
 	return dir;
@@ -39,7 +22,7 @@ Table::Table(const Schema &s, const Config &globalConfig)
 	symbolPath(path(dir).append("_symbols"))
 {
 	readSymbolFile();
-	for (Column c : schema.getColumns())
+	for (Column c : schema.columns)
 	{
 		meta.setOption("columns", c.name, schema.getColumnTypeName(c.type));
 		columnPaths.emplace_back(getColumnFile(c));
@@ -71,12 +54,16 @@ path Table::getColumnFile(Column column)
 void Table::flush()
 {
 	// Write columnar data
-	size_t symNum = 0;
-	vector<Column> columns = schema.getColumns();
-	vector<ofstream> columnStreams;
+	unsigned int symNum = symbols.size();
+	vector<Column> columns = schema.columns;
+	vector<fstream> columnStreams;
 	for (int i = 0; i < columns.size(); i++)
 	{
-		columnStreams.emplace_back(ofstream(columnPaths[i], ios::binary | ios::in | ios::ate));
+		// Create the file if it doesn't exist
+		columnStreams.emplace_back(fstream(columnPaths[i], ios::out | ios::app));
+		columnStreams[i].close();
+		// Open the file in the mode we want
+		columnStreams[i].open(columnPaths[i], ios::in | ios::out | ios::binary | ios::ate);
 	}
 
 	// Sort rowBuffer by timestamp
@@ -89,8 +76,8 @@ void Table::flush()
 		for (Row row : rowBuffer)
 		{
 			RowValue val = row.columns[i];
-			if (type == ColumnType::SYMBOL)
-			{
+			switch (columns[i].type) {
+			case ColumnType::SYMBOL:
 				try
 				{
 					string sym = get<string>(val);
@@ -99,7 +86,7 @@ void Table::flush()
 						symbolSet[sym] = symNum++;
 						symbols.push_back(sym);
 					}
-					columnStreams[i].write(reinterpret_cast<char*>(&symbolSet[sym]), sizeof(size_t));
+					columnStreams[i].write(reinterpret_cast<char*>(&symbolSet[sym]), sizeof(unsigned int));
 				}
 				catch (bad_variant_access)
 				{
@@ -108,15 +95,15 @@ void Table::flush()
 					cerr << "Error writing: value \"";
 					visit([](auto&& arg) {
 						cerr << arg;
-					}, val);
+						}, val);
 					cerr << "\" does not match type " << columnType << endl;
 				}
-			}
-			else
-			{
+				break;
+			default:
 				visit([&](auto&& arg) {
 					columnStreams[i].write(reinterpret_cast<char*>(&arg), sizeof(arg));
 				}, val);
+				break;
 			}
 		}
 	}
@@ -151,39 +138,42 @@ void Table::readSymbolFile()
 	}
 }
 
-vector<Row> Table::read(int fromRow, int toRow)
+vector<Row> Table::read(size_t fromRow, size_t toRow)
 {
 	vector<Row> rowBuffer;
-	vector<Column> columns = schema.getColumns();
 	vector<ifstream> columnStreams;
-	for (int i = 0; i < columns.size(); i++)
+	for (size_t i = 0; i < schema.columns.size(); i++)
 	{
 		columnStreams.emplace_back(ifstream(columnPaths[i], ios::binary));
 		//columnStream.seekg(fromRow);
 	}
 	char buffer[sizeof(long long)];
-	for (int i = fromRow; i < toRow; i++)
+	unsigned int symNum;
+	for (size_t i = fromRow; i < toRow; i++)
 	{
 		long long ts;
 		columnStreams[0].read(reinterpret_cast<char*>(&ts), sizeof(long long));
 		Row r = Row(ts);
-		size_t symNum;
-		for (int j = 1; j < columns.size(); j++)
+		for (int j = 1; j < schema.columns.size(); j++)
 		{
-			switch (columns[j].type) {
-			case ColumnType::TIMESTAMP:
-			case ColumnType::LONG:
+			switch (schema.columns[j].type) {
+			case ColumnType::TIMESTAMP: {
 				columnStreams[j].read(buffer, sizeof(long long));
 				r.put(*reinterpret_cast<long long*>(buffer));
 				break;
-			case ColumnType::DOUBLE:
-				columnStreams[j].read(buffer, sizeof(double));
-				r.put(*reinterpret_cast<double*>(buffer));
-				break;
+			}
 			case ColumnType::SYMBOL:
-				columnStreams[j].read(buffer, sizeof(size_t));
-				symNum = *reinterpret_cast<size_t*>(buffer);
+				columnStreams[j].read(buffer, sizeof(unsigned int));
+				symNum = *reinterpret_cast<unsigned int*>(buffer);
 				r.put(symbols[symNum]);
+				break;
+			case ColumnType::UINT32:
+				columnStreams[j].read(buffer, sizeof(unsigned int));
+				r.put(*reinterpret_cast<unsigned int*>(buffer));
+				break;
+			case ColumnType::CURRENCY:
+				columnStreams[j].read(buffer, sizeof(float));
+				r.put(*reinterpret_cast<float*>(buffer));
 				break;
 			default:
 				break;

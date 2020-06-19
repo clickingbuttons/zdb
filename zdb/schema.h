@@ -3,18 +3,26 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <variant>
 
 using namespace std;
 
 enum class ColumnType
 {
 	TIMESTAMP,
-	INT,
-	LONG,
-	DOUBLE,
+	CURRENCY,
 	SYMBOL,
-	STRING
+	UINT32 // Good for up to 4.29B volume
 };
+
+// Nanoseconds since epoch, formatted in time.h
+using Timestamp = long long;
+// Decimal numbers, formatted using << fixed << setprecision(4)
+using Currency = float;
+// Strings mapped to unsigned ints
+using Symbol = string;
+
+using RowValue = variant<Timestamp, Currency, Symbol, unsigned int>;
 
 struct Column
 {
@@ -28,13 +36,11 @@ public:
 	Schema(string name);
 	void addColumn(Column c);
 	void addColumn(string name, ColumnType type);
-	vector<Column> getColumns() const;
-	string getName() const;
+	vector<Column> columns;
+	string name;
 	static string getColumnTypeName(ColumnType c);
 	// Copy assignment operator.
 	Schema& operator=(const Schema& other);
 private:
-	string name;
-	vector<Column> columns;
 	static map<ColumnType, string> columnTypeStrings;
 };

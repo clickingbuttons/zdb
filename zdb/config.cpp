@@ -3,6 +3,7 @@
 #include <algorithm> 
 #include <cctype>
 #include <locale>
+#include <codecvt>
 
 // trim from start (in place)
 static inline void ltrim(string& s) {
@@ -33,6 +34,8 @@ Config::Config(filesystem::path path) : path(path)
 void Config::read()
 {
 	ifstream infile(path);
+	locale loc(locale(), new codecvt_utf8<char>);
+	infile.imbue(loc);
 
 	string sectionName = "default";
 	string line;
@@ -70,6 +73,8 @@ void Config::read()
 void Config::write()
 {
 	ofstream outfile(path, ofstream::trunc);
+	locale loc(locale(), new codecvt_utf8<char>);
+	outfile.imbue(loc);
 
 	for (auto const& [section, columns] : sections)
 	{

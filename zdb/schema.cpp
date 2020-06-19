@@ -17,27 +17,20 @@ void Schema::addColumn(string name, ColumnType type)
 	addColumn(Column({ name, type }));
 }
 
-vector<Column> Schema::getColumns() const
-{
-	return columns;
-}
-
-string Schema::getName() const
-{
-	return name;
-}
-
 map<ColumnType, string> Schema::columnTypeStrings = {
 	   {ColumnType::TIMESTAMP, "TIMESTAMP"},
-	   {ColumnType::INT, "INT"},
-	   {ColumnType::LONG, "LONG"},
-	   {ColumnType::DOUBLE, "DOUBLE"},
+	   {ColumnType::CURRENCY, "CURRENCY"},
 	   {ColumnType::SYMBOL, "SYMBOL"},
-	   {ColumnType::STRING, "STRING"},
+	   {ColumnType::UINT32, "UINT32"},
 };
 
 string Schema::getColumnTypeName(ColumnType c)
 {
+	auto type = columnTypeStrings.find(c);
+	if (type == columnTypeStrings.end())
+	{
+		return "UNKNOWN";
+	}
 	return columnTypeStrings.at(c);
 }
 

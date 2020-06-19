@@ -1,5 +1,8 @@
 #include "row.h"
-#include <iostream>
+#include "time.h"
+#include <iomanip>
+#include <sstream>
+#include <variant>
 
 Row::Row(int size)
 {
@@ -32,15 +35,44 @@ bool Row::operator<(const Row& other) const
 	return columns[0] < other.columns[0];
 }
 
-ostream& operator<<(ostream& os, Row const& row)
+
+string Row::toString(Schema const& schema)
 {
-	for (RowValue val : row.columns)
+	ostringstream os;
+	char buffer[8];
+	for (int i = 0; i < schema.columns.size(); i++)
 	{
-		visit([&](auto&& arg) {
-			os << arg;
-			os << string(" ");
-		}, val);
+		switch (schema.columns[i].type) {
+		case ColumnType::TIMESTAMP:
+		{
+			long long nanos = get<long long>(columns[i]);
+			os << formatNanos(nanos);
+			break;
+		}
+		case ColumnType::CURRENCY:
+		{
+			float decimal = get<float>(columns[i]);
+			sprintf(buffer, "%-5g", decimal);
+			os << buffer;
+			if (strlen(buffer) == 5)
+			{
+				os << " ";
+			}
+			break;
+		}
+		case ColumnType::SYMBOL:
+		{
+			os << left << setw(6) << get<string>(columns[i]);
+			break;
+		}
+		default:
+			visit([&](auto&& arg) {
+				os << arg;
+			}, columns[i]);
+			break;
+		}
+		os << " ";
 	}
 
-	return os;
+	return os.str();
 }

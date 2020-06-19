@@ -22,7 +22,7 @@ enum class PartitionBy
 class Table {
 public:
 	Table(const Schema &schema, const Config &globalConfig);
-	vector<Row> read(int fromRow, int toRow);
+	vector<Row> read(size_t fromRow, size_t toRow);
 	vector<Row> read();
 	void write(Row row);
 	void write(vector<Row> rows);
@@ -36,7 +36,7 @@ private:
 	// Symbol table saved to _symbols. Stored twice in RAM since there is no array-backed map
 	path symbolPath;
 	void readSymbolFile();
-	unordered_map<string, size_t> symbolSet;
+	unordered_map<string, unsigned int> symbolSet;
 	vector<string> symbols;
 	// Helper to get path for column based on its type
 	path getColumnFile(Column column);
