@@ -10,10 +10,10 @@ using namespace std;
 class Row
 {
 public:
-	Row(long long timestamp);
-	Row(long long timestamp, shared_ptr<Schema> schema);
-	Row(long long timestamp, shared_ptr<Schema> schema, vector<RowValue> rowValues);
-	void put(RowValue value);
+	Row(Timestamp timestamp);
+	Row(Timestamp timestamp, shared_ptr<Schema> schema);
+	Row(Timestamp timestamp, shared_ptr<Schema> schema, vector<RowValueVariant> rowValues);
+	void put(RowValue const& value);
 	vector<RowValue> columns;
 	bool operator < (const Row& other) const;
 	// Needed for printing

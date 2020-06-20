@@ -1,10 +1,10 @@
 #include "table.h"
-#include <iostream>
 #include <fstream>
 #include <variant>
 #include <type_traits>
 #include <algorithm>
 #include <cctype>
+#include <stdexcept>
 
 path getDir(const Schema& s, const Config& globalConfig)
 {
@@ -32,24 +32,14 @@ Table::Table(const Schema &s, const Config &globalConfig)
 }
 
 // https://dev.to/tmr232/that-overloaded-trick-overloading-lambdas-in-c17
-template<class... Ts> struct overload : Ts... { using Ts::operator()...; };
-template<class... Ts> overload(Ts...)->overload<Ts...>;
-
 void Table::write(Row row)
 {
-	// Convert currency to float32
 	for (int i = 0; i < schema.columns.size(); i++)
 	{
 		switch (schema.columns[i].type)
 		{
 		case ColumnType::CURRENCY:
-			visit(overload{
-				[&](int arg) { row.columns[i] = (float)arg; },
-				[&](long arg) { row.columns[i] = (float)arg; },
-				[&](double arg) { row.columns[i] = (float)arg; },
-				[&](float arg) { },
-				[](auto arg) { cerr << "Cannot convert currency \"" << arg << "\" to float32" << endl; },
-			}, row.columns[i]);
+			// TODO: Convert currency to float32
 			break;
 		default:
 			break;
@@ -80,7 +70,7 @@ path Table::getColumnFile(Column column)
 void Table::flush()
 {
 	// Write columnar data
-	unsigned int symNum = symbols.size();
+	uint32 symNum = (uint32)symbols.size();
 	vector<Column> columns = schema.columns;
 	vector<fstream> columnStreams;
 	for (int i = 0; i < columns.size(); i++)
@@ -101,34 +91,47 @@ void Table::flush()
 
 		for (Row row : rowBuffer)
 		{
-			RowValue val = row.columns[i];
+			RowValue* val = &row.columns[i];
 			switch (columns[i].type) {
-			case ColumnType::SYMBOL:
-				try
-				{
-					string sym = get<string>(val);
-					if (symbolSet.find(sym) == symbolSet.end())
-					{
-						symbolSet[sym] = symNum++;
-						symbols.push_back(sym);
-					}
-					columnStreams[i].write(reinterpret_cast<char*>(&symbolSet[sym]), sizeof(unsigned int));
-				}
-				catch (bad_variant_access)
-				{
-					string columnType = schema.getColumnTypeName(type);
-
-					cerr << "Error writing: value \"";
-					visit([](auto&& arg) {
-						cerr << arg;
-						}, val);
-					cerr << "\" does not match type " << columnType << endl;
-				}
+			// 8 byte types
+			case ColumnType::INT64:
+			case ColumnType::TIMESTAMP:
+			case ColumnType::UINT64:
+			case ColumnType::FLOAT64:
+				static_assert(
+					sizeof(int64) == 8 &&
+					sizeof(uint64) == 8 &&
+					sizeof(Timestamp) == 8 &&
+					sizeof(float64) == 8,
+					"Sizes on this platform are not all 64 bit");
+				columnStreams[i].write(val->sym, 8);
 				break;
+			// 4 byte types
+			case ColumnType::INT32:
+			case ColumnType::UINT32:
+			case ColumnType::FLOAT32:
+			case ColumnType::CURRENCY:
+				static_assert(
+					sizeof(int32) == 4 &&
+					sizeof(uint32) == 4 &&
+					sizeof(Currency) == 4 &&
+					sizeof(float32) == 4,
+					"Sizes on this platform are not all 32 bit");
+				columnStreams[i].write(val->sym, 4);
+				break;
+			case ColumnType::SYMBOL:
+			{
+				string sym(val->sym);
+				if (symbolSet.find(sym) == symbolSet.end())
+				{
+					symbolSet[sym] = symNum++;
+					symbols.push_back(sym);
+				}
+				columnStreams[i].write(reinterpret_cast<char*>(&symbolSet[sym]), 4);
+				break;
+			}
 			default:
-				visit([&](auto&& arg) {
-					columnStreams[i].write(reinterpret_cast<char*>(&arg), sizeof(arg));
-				}, val);
+				throw runtime_error("Writing " + schema.getColumnTypeName(columns[i].type) + " is not yet supported");
 				break;
 			}
 		}
@@ -168,52 +171,61 @@ vector<Row> Table::read(size_t fromRow, size_t toRow)
 {
 	vector<Row> rowBuffer;
 	vector<ifstream> columnStreams;
-	for (size_t i = 0; i < schema.columns.size(); i++)
+	size_t numColumns = schema.columns.size();
+	for (size_t i = 0; i < numColumns; i++)
 	{
 		columnStreams.emplace_back(ifstream(columnPaths[i], ios::binary));
 		//columnStream.seekg(fromRow);
 	}
-	char buffer[sizeof(long long)];
 	shared_ptr<Schema> sharedSchema = make_shared<Schema>(schema);
-	for (size_t i = fromRow; i < toRow; i++)
+	for (size_t rowNum = fromRow; rowNum < toRow; rowNum++)
 	{
+		// Grab timestamp from first column
 		long long ts;
-		columnStreams[0].read(reinterpret_cast<char*>(&ts), sizeof(long long));
+		columnStreams[0].read(reinterpret_cast<char*>(&ts), sizeof(Timestamp));
 		Row r = Row(ts, sharedSchema);
-		for (int j = 1; j < schema.columns.size(); j++)
+		for (size_t i = 1; i < numColumns; i++)
 		{
-			switch (schema.columns[j].type) {
+			RowValue val;
+
+			switch (schema.columns[i].type) {
+			// 8 byte types
+			case ColumnType::INT64:
+			case ColumnType::UINT64:
 			case ColumnType::TIMESTAMP:
-				columnStreams[j].read(buffer, sizeof(long long));
-				r.put(*reinterpret_cast<long long*>(buffer));
+			case ColumnType::FLOAT64:
+				columnStreams[i].read(val.sym, sizeof(int64));
+				break;
+			// 4 byte types
+			case ColumnType::INT32:
+			case ColumnType::UINT32:
+			case ColumnType::FLOAT32:
+				columnStreams[i].read(val.sym, sizeof(int32));
 				break;
 			case ColumnType::SYMBOL:
 			{
-				columnStreams[j].read(buffer, sizeof(unsigned int));
-				unsigned int symNum = *reinterpret_cast<unsigned int*>(buffer);
-				r.put(symbols[symNum]);
+				columnStreams[i].read(val.sym, sizeof(uint32));
+				string sym = symbols[val.i32];
+				strcpy_s(val.sym, sizeof(val.sym), sym.c_str());
 				break;
 			}
-			case ColumnType::UINT32:
-				columnStreams[j].read(buffer, sizeof(unsigned int));
-				r.put(*reinterpret_cast<unsigned int*>(buffer));
-				break;
 			case ColumnType::CURRENCY:
 			{
 				// Store on disk as float, read as int64 for accurate fixed-precision math
-				columnStreams[j].read(buffer, sizeof(float));
-				float val = *reinterpret_cast<float*>(buffer);
+				columnStreams[i].read(val.sym, sizeof(float32));
 				// Use last 6 digits as cents
 				// 2^63 =  9,223,372,036,854,776,000
 				//		= $9,223,372,036,854.776000
-				float micros = val * 1e6;
-				long long microCents = (long long)(micros);
-				r.put(microCents);
+				float micros = val.f32 * 1000000.f;
+				long long microCents = (long long)micros;
+				val.pcur = microCents;
 				break;
 			}
 			default:
 				break;
 			}
+
+			r.put(val);
 		}
 		rowBuffer.push_back(r);
 	}

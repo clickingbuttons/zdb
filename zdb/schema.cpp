@@ -21,7 +21,9 @@ map<ColumnType, string> Schema::columnTypeStrings = {
 	   {ColumnType::TIMESTAMP, "TIMESTAMP"},
 	   {ColumnType::CURRENCY, "CURRENCY"},
 	   {ColumnType::SYMBOL, "SYMBOL"},
+	   {ColumnType::INT32, "INT32"},
 	   {ColumnType::UINT32, "UINT32"},
+	   {ColumnType::FLOAT64, "FLOAT64"},
 };
 
 string Schema::getColumnTypeName(ColumnType c)
