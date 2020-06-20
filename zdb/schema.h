@@ -75,6 +75,7 @@ struct Column
 class Schema {
 public:
 	Schema(string name);
+	Schema(string name, map<string, ColumnType> columns);
 	void addColumn(Column c);
 	void addColumn(string name, ColumnType type);
 	vector<Column> columns;

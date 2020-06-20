@@ -31,20 +31,8 @@ Table::Table(const Schema &s, const Config &globalConfig)
 	rowCount = stoi(meta.getOption("rows", "count", "0"));
 }
 
-// https://dev.to/tmr232/that-overloaded-trick-overloading-lambdas-in-c17
 void Table::write(Row row)
 {
-	for (int i = 0; i < schema.columns.size(); i++)
-	{
-		switch (schema.columns[i].type)
-		{
-		case ColumnType::CURRENCY:
-			// TODO: Convert currency to float32
-			break;
-		default:
-			break;
-		}
-	}
 	rowBuffer.push_back(row);
 }
 

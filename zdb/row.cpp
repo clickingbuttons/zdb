@@ -12,16 +12,13 @@ Row::Row(Timestamp timestamp)
 	columns.push_back(val);
 }
 
+// Delegating constructors seems okay
+// https://godbolt.org/z/SpWHv7
 Row::Row(Timestamp timestamp, shared_ptr<Schema> schema)
-	: Row(timestamp) // TODO: how efficient is this?
+	: Row(timestamp)
 {
 	this->schema = schema;
 }
-
-
-// https://dev.to/tmr232/that-overloaded-trick-overloading-lambdas-in-c17
-template<class... Ts> struct overload : Ts... { using Ts::operator()...; };
-template<class... Ts> overload(Ts...)->overload<Ts...>;
 
 Row::Row(Timestamp timestamp, shared_ptr<Schema> schema, vector<RowValueVariant> rowValues)
 	: Row(timestamp, schema)

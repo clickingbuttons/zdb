@@ -6,20 +6,21 @@ using namespace std;
 
 int main()
 {
-	Schema agg1dSchema("agg1d");
-	agg1dSchema.addColumn("sym", ColumnType::SYMBOL);
-	agg1dSchema.addColumn("open", ColumnType::CURRENCY);
-	agg1dSchema.addColumn("high", ColumnType::CURRENCY);
-	agg1dSchema.addColumn("low", ColumnType::CURRENCY);
-	agg1dSchema.addColumn("close", ColumnType::CURRENCY);
-	agg1dSchema.addColumn("close_unadjusted", ColumnType::CURRENCY);
-	agg1dSchema.addColumn("volume", ColumnType::UINT32);
-
 	// Global config
 	Config config = Config("zdb.conf");
 	config.read();
 
-	// Transfer schema ownership to table
+	// TODO: Lookup table on disk
+	Schema agg1dSchema("agg1d", {
+		{"sym", ColumnType::SYMBOL},
+		{"open", ColumnType::CURRENCY},
+		{"high", ColumnType::CURRENCY},
+		{"low", ColumnType::CURRENCY},
+		{"close", ColumnType::CURRENCY},
+		{"close_unadjusted", ColumnType::CURRENCY},
+		{"volume", ColumnType::UINT32}
+	});
+
 	Table agg1d = Table(agg1dSchema, config);
 
 	shared_ptr<Schema> sharedSchema = make_shared<Schema>(agg1d.schema);

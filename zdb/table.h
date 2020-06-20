@@ -36,7 +36,7 @@ private:
 	// Symbol table saved to _symbols. Stored twice in RAM since there is no array-backed map
 	path symbolPath;
 	void readSymbolFile();
-	// TODO: Use const char* instead of string
+	// TODO: Support strings longer than 8 bytes on heap
 	unordered_map<string, uint32> symbolSet;
 	vector<string> symbols;
 	// Helper to get path for column based on its type

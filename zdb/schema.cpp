@@ -7,6 +7,15 @@ Schema::Schema(string name)
 	addColumn("ts", ColumnType::TIMESTAMP);
 }
 
+Schema::Schema(string name, map<string, ColumnType> columns)
+	: Schema(name)
+{
+	for (auto const& [key, val] : columns)
+	{
+		addColumn(key, val);
+	}
+}
+
 void Schema::addColumn(Column c)
 {
 	this->columns.push_back(c);
