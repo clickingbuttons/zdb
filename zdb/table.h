@@ -27,10 +27,10 @@ public:
 	void write(Row row);
 	void write(vector<Row> rows);
 	void flush();
+	Schema schema;
 private:
 	// Directory this is stored on disk
 	path dir;
-	Schema schema;
 	// Metadata saved to _meta
 	Config meta;
 	// Symbol table saved to _symbols. Stored twice in RAM since there is no array-backed map

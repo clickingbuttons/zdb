@@ -22,20 +22,21 @@ int main()
 	// Transfer schema ownership to table
 	Table agg1d = Table(agg1dSchema, config);
 
+	shared_ptr<Schema> sharedSchema = make_shared<Schema>(agg1d.schema);
 	agg1d.write({
-		//			  ts  ,   sym   , open, high, low, close, close^, volume
-		Row(1073077200000054742, { "MSFT", 40.23f, 50.f, 30.f, 44.f, 44.f, 1000U}),
-		Row(1073077200001234556, { "AAPL", 300.f, 400.f, 200.f, 340.f, 340.f, 2000U}),
-		Row(1073077212356789012, { "AMZN", 40.234f, 50.f, 30.f, 44.f, 44.f, 3000U}),
-		Row(1073077212356789012, { "BEVD", 1.2345f, 50.f, 30.f, 44.f, 44.f, 4000U}),
-		Row(1073077212356789012, { "BKSH", 256789.f, 50.f, 30.f, 44.f, 44.f, 5000U}),
+		//					ts ,   sym   , open,  high,    low,  close, close^,     volume
+		Row(1073077200000054742, sharedSchema, { "MSFT", 40.23,		50,		30,		44,		44,		1000U}),
+		Row(1073077200001234556, sharedSchema, { "AAPL", 300,		400,	200,	340,	340,	2000U}),
+		Row(1073077212356789012, sharedSchema, { "AMZN", 40.234,	50,		30,		44,		44,		3000U}),
+		Row(1073077212356789012, sharedSchema, { "BEVD", 1.2345,	50,		30,		44,		44,		4000U}),
+		Row(1073077212356789012, sharedSchema, { "BKSH", 256789,	50,		30,		44,		44,		5000U}),
 	});
 	agg1d.flush();
 
 	vector<Row> myRows = agg1d.read();
 	for (Row row: myRows)
 	{
-		cout << row.toString(agg1dSchema) << endl;
+		cout << row << endl;
 	}
 
 	cin.get();

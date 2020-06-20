@@ -4,23 +4,19 @@
 #include <sstream>
 #include <variant>
 
-Row::Row(int size)
-{
-	columns.reserve(size);
-}
-
 Row::Row(long long timestamp)
 {
 	columns.push_back(timestamp);
 }
 
-Row::Row(long long timestamp, vector<RowValue> rowValues)
-	: Row(timestamp)
-{	
-	columns.insert(end(columns), begin(rowValues), end(rowValues));
+Row::Row(long long timestamp, shared_ptr<Schema> schema)
+	: Row(timestamp) // TODO: how efficient is this?
+{
+	this->schema = schema;
 }
 
-Row::Row(vector<RowValue> rowValues)
+Row::Row(long long timestamp, shared_ptr<Schema> schema, vector<RowValue> rowValues)
+	: Row(timestamp, schema)
 {
 	columns.insert(end(columns), begin(rowValues), end(rowValues));
 }
@@ -35,24 +31,26 @@ bool Row::operator<(const Row& other) const
 	return columns[0] < other.columns[0];
 }
 
+constexpr double micros_to_cents = 1000000;
 
-string Row::toString(Schema const& schema)
+ostream& operator<<(ostream& os, Row const& row)
 {
-	ostringstream os;
 	char buffer[8];
-	for (int i = 0; i < schema.columns.size(); i++)
+	int size = row.schema->columns.size();
+	for (int i = 0; i < size; i++)
 	{
-		switch (schema.columns[i].type) {
+		switch (row.schema->columns[i].type) {
 		case ColumnType::TIMESTAMP:
 		{
-			long long nanos = get<long long>(columns[i]);
+			long long nanos = get<long long>(row.columns[i]);
 			os << formatNanos(nanos);
 			break;
 		}
 		case ColumnType::CURRENCY:
 		{
-			float decimal = get<float>(columns[i]);
-			sprintf(buffer, "%-5g", decimal);
+			long long microCents = get<long long>(row.columns[i]);
+			double dollars = microCents / micros_to_cents;
+			sprintf(buffer, "%-5g", dollars);
 			os << buffer;
 			if (strlen(buffer) == 5)
 			{
@@ -62,17 +60,17 @@ string Row::toString(Schema const& schema)
 		}
 		case ColumnType::SYMBOL:
 		{
-			os << left << setw(6) << get<string>(columns[i]);
+			os << left << setw(6) << get<string>(row.columns[i]);
 			break;
 		}
 		default:
 			visit([&](auto&& arg) {
 				os << arg;
-			}, columns[i]);
+			}, row.columns[i]);
 			break;
 		}
 		os << " ";
 	}
 
-	return os.str();
+	return os;
 }

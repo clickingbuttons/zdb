@@ -2,6 +2,7 @@
 
 #include "schema.h"
 #include <string>
+#include <memory>
 #include <vector>
 
 using namespace std;
@@ -9,12 +10,14 @@ using namespace std;
 class Row
 {
 public:
-	Row(int size);
 	Row(long long timestamp);
-	Row(long long timestamp, vector<RowValue> rowValues);
-	Row(vector<RowValue> rowValues);
+	Row(long long timestamp, shared_ptr<Schema> schema);
+	Row(long long timestamp, shared_ptr<Schema> schema, vector<RowValue> rowValues);
 	void put(RowValue value);
 	vector<RowValue> columns;
 	bool operator < (const Row& other) const;
-	string toString(Schema const& schema);
+	// Needed for printing
+	shared_ptr<Schema> schema;
 };
+
+ostream& operator<<(ostream& os, Row const& row);

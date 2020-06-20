@@ -2,6 +2,7 @@
 #include <iostream>
 #include <fstream>
 #include <variant>
+#include <type_traits>
 #include <algorithm>
 #include <cctype>
 
@@ -30,14 +31,39 @@ Table::Table(const Schema &s, const Config &globalConfig)
 	rowCount = stoi(meta.getOption("rows", "count", "0"));
 }
 
+// https://dev.to/tmr232/that-overloaded-trick-overloading-lambdas-in-c17
+template<class... Ts> struct overload : Ts... { using Ts::operator()...; };
+template<class... Ts> overload(Ts...)->overload<Ts...>;
+
 void Table::write(Row row)
 {
+	// Convert currency to float32
+	for (int i = 0; i < schema.columns.size(); i++)
+	{
+		switch (schema.columns[i].type)
+		{
+		case ColumnType::CURRENCY:
+			visit(overload{
+				[&](int arg) { row.columns[i] = (float)arg; },
+				[&](long arg) { row.columns[i] = (float)arg; },
+				[&](double arg) { row.columns[i] = (float)arg; },
+				[&](float arg) { },
+				[](auto arg) { cerr << "Cannot convert currency \"" << arg << "\" to float32" << endl; },
+			}, row.columns[i]);
+			break;
+		default:
+			break;
+		}
+	}
 	rowBuffer.push_back(row);
 }
 
 void Table::write(vector<Row> rows)
 {
-	rowBuffer.insert(rowBuffer.end(), rows.begin(), rows.end());
+	for (Row r : rows)
+	{
+		write(r);
+	}
 }
 
 path Table::getColumnFile(Column column)
@@ -148,33 +174,43 @@ vector<Row> Table::read(size_t fromRow, size_t toRow)
 		//columnStream.seekg(fromRow);
 	}
 	char buffer[sizeof(long long)];
-	unsigned int symNum;
+	shared_ptr<Schema> sharedSchema = make_shared<Schema>(schema);
 	for (size_t i = fromRow; i < toRow; i++)
 	{
 		long long ts;
 		columnStreams[0].read(reinterpret_cast<char*>(&ts), sizeof(long long));
-		Row r = Row(ts);
+		Row r = Row(ts, sharedSchema);
 		for (int j = 1; j < schema.columns.size(); j++)
 		{
 			switch (schema.columns[j].type) {
-			case ColumnType::TIMESTAMP: {
+			case ColumnType::TIMESTAMP:
 				columnStreams[j].read(buffer, sizeof(long long));
 				r.put(*reinterpret_cast<long long*>(buffer));
 				break;
-			}
 			case ColumnType::SYMBOL:
+			{
 				columnStreams[j].read(buffer, sizeof(unsigned int));
-				symNum = *reinterpret_cast<unsigned int*>(buffer);
+				unsigned int symNum = *reinterpret_cast<unsigned int*>(buffer);
 				r.put(symbols[symNum]);
 				break;
+			}
 			case ColumnType::UINT32:
 				columnStreams[j].read(buffer, sizeof(unsigned int));
 				r.put(*reinterpret_cast<unsigned int*>(buffer));
 				break;
 			case ColumnType::CURRENCY:
+			{
+				// Store on disk as float, read as int64 for accurate fixed-precision math
 				columnStreams[j].read(buffer, sizeof(float));
-				r.put(*reinterpret_cast<float*>(buffer));
+				float val = *reinterpret_cast<float*>(buffer);
+				// Use last 6 digits as cents
+				// 2^63 =  9,223,372,036,854,776,000
+				//		= $9,223,372,036,854.776000
+				float micros = val * 1e6;
+				long long microCents = (long long)(micros);
+				r.put(microCents);
 				break;
+			}
 			default:
 				break;
 			}

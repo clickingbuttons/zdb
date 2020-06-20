@@ -12,7 +12,9 @@ enum class ColumnType
 	TIMESTAMP,
 	CURRENCY,
 	SYMBOL,
-	UINT32 // Good for up to 4.29B volume
+	INT32,
+	UINT32, // Good for up to 4.29B volume
+	DOUBLE
 };
 
 // Nanoseconds since epoch, formatted in time.h
@@ -22,7 +24,7 @@ using Currency = float;
 // Strings mapped to unsigned ints
 using Symbol = string;
 
-using RowValue = variant<Timestamp, Currency, Symbol, unsigned int>;
+using RowValue = variant<Timestamp, Currency, Symbol, int, unsigned int, double>;
 
 struct Column
 {
