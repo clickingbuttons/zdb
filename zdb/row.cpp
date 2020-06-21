@@ -7,9 +7,7 @@
 
 Row::Row(Timestamp timestamp)
 {
-	RowValue val;
-	val.ts = timestamp;
-	columns.push_back(val);
+	columns.push_back(RowValue(timestamp));
 }
 
 // Delegating constructors seems okay

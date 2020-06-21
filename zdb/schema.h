@@ -60,6 +60,7 @@ union RowValue
 	// For storing symbols (string storage not yet implemented)
 	char sym[8];
 	RowValue() { ts = 0; };
+	RowValue(Timestamp timestamp) { ts = timestamp; };
 	~RowValue() {};
 	RowValue(const RowValue& other)
 	{
