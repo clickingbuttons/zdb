@@ -199,7 +199,7 @@ vector<Row> Table::read(size_t fromRow, size_t toRow)
 			}
 			case ColumnType::CURRENCY:
 			{
-				// Store on disk as float, read as int64 for accurate fixed-precision math
+				// Stored on disk as float, read as int64 for accurate fixed-precision math
 				columnStreams[i].read(val.sym, sizeof(float32));
 				// Use last 6 digits as cents
 				// 2^63 =  9,223,372,036,854,776,000

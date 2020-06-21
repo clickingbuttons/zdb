@@ -25,7 +25,7 @@ int main()
 
 	shared_ptr<Schema> sharedSchema = make_shared<Schema>(agg1d.schema);
 	agg1d.write({
-		//					ts ,				 sym   , open,  high,    low,  close, close^,     volume
+		//					ts ,					sym, open,	  high,    low,  close, close^,     volume
 		Row(1073077200000054742, sharedSchema, { "MSFT", 40.23,		50,		30,		44,		44,		1000 }),
 		Row(1073077200001234556, sharedSchema, { "AAPL", 300,		400,	200,	340,	340,	2000 }),
 		Row(1073077212356789012, sharedSchema, { "AMZN", 40.234,	50,		30,		44,		44,		3000 }),

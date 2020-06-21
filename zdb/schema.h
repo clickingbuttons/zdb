@@ -23,7 +23,9 @@ enum class ColumnType
 
 // Nanoseconds since epoch, formatted in time.h
 using Timestamp = long long;
-// Decimal numbers stored as floats but use int64 in calculation
+// Decimal numbers stored as float32 but read as int64 for higher precision
+// I decided float32s are better than uint32 since we get a range bigger than [0, 4294967295]
+// The cost is 5-10% slower conversions when loading from disk: http://quick-bench.com/0ELlRfnA1hq4UDBDeyq4uvE9W1g
 using Currency = float;
 using PreciseCurrency = long long;
 // char[8] unsigned ints
@@ -43,7 +45,7 @@ using RowValueVariant = variant<Symbol, int64, uint64, float64, int32, uint32, f
 // 8 byte value
 // no need to store an `int index;` for each row like std::variant does (we have the schema anyways)
 // union is possibly 2x faster than std::variant when visiting
-// http://quick-bench.com/mC1ICqB8eqeBPNDZfKCDmnjPz7s
+// http://quick-bench.com/qghyMggY7DzUKtKP4B85DHJmPg4
 union RowValue
 {
 	Timestamp ts;
