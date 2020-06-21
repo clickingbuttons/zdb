@@ -7,12 +7,12 @@ Schema::Schema(string name)
 	addColumn("ts", ColumnType::TIMESTAMP);
 }
 
-Schema::Schema(string name, map<string, ColumnType> columns)
+Schema::Schema(string name, vector<pair<string, ColumnType>> columns)
 	: Schema(name)
 {
-	for (auto const& [key, val] : columns)
+	for (const pair<string, ColumnType> col : columns)
 	{
-		addColumn(key, val);
+		addColumn(col.first, col.second);
 	}
 }
 

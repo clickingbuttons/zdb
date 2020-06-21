@@ -1,8 +1,8 @@
 #pragma once
 
-#include <iostream>
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 #include <variant>
 
@@ -75,7 +75,7 @@ struct Column
 class Schema {
 public:
 	Schema(string name);
-	Schema(string name, map<string, ColumnType> columns);
+	Schema(string name, vector<pair<string, ColumnType>> columns);
 	void addColumn(Column c);
 	void addColumn(string name, ColumnType type);
 	vector<Column> columns;
