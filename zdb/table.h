@@ -21,7 +21,8 @@ enum class PartitionBy
 
 class Table {
 public:
-	Table(const Schema &schema, const Config &globalConfig);
+	Table(const Config& globalConfig, const Schema& schema);
+	Table(const Config& globalConfig, const string& tableName);
 	vector<Row> read(size_t fromRow, size_t toRow);
 	vector<Row> read();
 	void write(Row row);
@@ -47,4 +48,6 @@ private:
 	vector<Row> rowBuffer;
 	// Used to hold row count until `flush`
 	size_t rowCount;
+	// Shared code between constructors
+	void init(const Config& globalConfig, string const& dir);
 };

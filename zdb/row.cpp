@@ -131,7 +131,7 @@ ostream& operator<<(ostream& os, Row const& row)
 			os << left << setw(6) << row.columns[i].ui32;
 			break;
 		default:
-			os << "unknown"; // row.columns[i];
+			os << "unknown";
 			break;
 		}
 		os << " ";

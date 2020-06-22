@@ -10,8 +10,7 @@ int main()
 	Config config = Config("zdb.conf");
 	config.read();
 
-	// TODO: Lookup table on disk
-	Schema agg1dSchema("agg1d", {
+	Schema agg1dSchema = Schema("agg1d", {
 		{"sym", ColumnType::SYMBOL},
 		{"open", ColumnType::CURRENCY},
 		{"high", ColumnType::CURRENCY},
@@ -19,9 +18,9 @@ int main()
 		{"close", ColumnType::CURRENCY},
 		{"close_unadjusted", ColumnType::CURRENCY},
 		{"volume", ColumnType::UINT32}
-	});
+		});
 
-	Table agg1d = Table(agg1dSchema, config);
+	Table agg1d = Table(config, agg1dSchema.name);
 
 	shared_ptr<Schema> sharedSchema = make_shared<Schema>(agg1d.schema);
 	agg1d.write({

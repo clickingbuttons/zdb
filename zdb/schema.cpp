@@ -1,4 +1,9 @@
 #include "schema.h"
+#include <stdexcept>
+
+Schema::Schema()
+{
+}
 
 Schema::Schema(string name)
 {
@@ -26,7 +31,7 @@ void Schema::addColumn(string name, ColumnType type)
 	addColumn(Column({ name, type }));
 }
 
-map<ColumnType, string> Schema::columnTypeStrings = {
+vector<pair<ColumnType, string>> Schema::columnTypes = {
 	   {ColumnType::TIMESTAMP, "TIMESTAMP"},
 	   {ColumnType::CURRENCY, "CURRENCY"},
 	   {ColumnType::SYMBOL, "SYMBOL"},
@@ -37,12 +42,27 @@ map<ColumnType, string> Schema::columnTypeStrings = {
 
 string Schema::getColumnTypeName(ColumnType c)
 {
-	auto type = columnTypeStrings.find(c);
-	if (type == columnTypeStrings.end())
+	for (pair<ColumnType, string> type : columnTypes)
 	{
-		return "UNKNOWN";
+		if (type.first == c)
+		{
+			return type.second;
+		}
 	}
-	return columnTypeStrings.at(c);
+	return "UNKNOWN";
+}
+
+ColumnType Schema::getColumnType(string c)
+{
+	for (pair<ColumnType, string> type : columnTypes)
+	{
+		if (type.second == c)
+		{
+			return type.first;
+		}
+	}
+
+	throw runtime_error("Column type " + c + " is invalid");
 }
 
 Schema& Schema::operator=(const Schema& other)

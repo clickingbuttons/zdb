@@ -24,6 +24,10 @@ static inline string trim(string s) {
 	return s;
 }
 
+Config::Config()
+{
+}
+
 Config::Config(filesystem::path path) : path(path)
 {
 	read();

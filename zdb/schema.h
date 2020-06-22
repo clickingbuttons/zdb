@@ -77,6 +77,7 @@ struct Column
 
 class Schema {
 public:
+	Schema();
 	Schema(string name);
 	Schema(string name, vector<pair<string, ColumnType>> columns);
 	void addColumn(Column c);
@@ -84,8 +85,9 @@ public:
 	vector<Column> columns;
 	string name;
 	static string getColumnTypeName(ColumnType c);
+	static ColumnType getColumnType(string c);
 	// Copy assignment operator.
 	Schema& operator=(const Schema& other);
 private:
-	static map<ColumnType, string> columnTypeStrings;
+	static vector<pair<ColumnType, string>> columnTypes;
 };

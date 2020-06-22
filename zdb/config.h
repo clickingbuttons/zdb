@@ -9,6 +9,7 @@ using namespace filesystem;
 
 class Config {
 public:
+	Config();
 	Config(path path);
 	void read();
 	void write();

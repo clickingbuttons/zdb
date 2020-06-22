@@ -5,30 +5,71 @@
 #include <algorithm>
 #include <cctype>
 #include <stdexcept>
+#include <sstream>
 
-path getDir(const Schema& s, const Config& globalConfig)
+path getDir(const Config& globalConfig, const string& tableName)
 {
 	string dbPath = globalConfig.getOption("filesystem", "path", current_path().string());
-	path dir = path(dbPath).append("data").append(s.name);
+	path dir = path(dbPath).append("data").append(tableName);
 	create_directories(dir);
 
 	return dir;
 }
 
-// Long member initializer to avoid using pointers in class members
-Table::Table(const Schema &s, const Config &globalConfig)
-	: dir(getDir(s, globalConfig)),
-	schema(s),
-	meta(Config(path(dir).append("_meta"))),
-	symbolPath(path(dir).append("_symbols"))
+void Table::init(const Config& globalConfig, string const& tableName)
 {
+	dir = getDir(globalConfig, tableName);
+	meta = Config(path(dir).append("_meta"));
+	symbolPath = path(dir).append("_symbols");
 	readSymbolFile();
-	for (Column c : schema.columns)
+	rowCount = stoi(meta.getOption("rows", "count", "0"));
+}
+
+// Long member initializer to avoid using pointers in class members
+Table::Table(const Config &globalConfig, const Schema& s)
+{
+	init(globalConfig, s.name);
+	schema = s;
+
+	ostringstream columnOrder;
+	for (int i = 0 ; i < schema.columns.size(); i++)
 	{
+		Column c = schema.columns[i];
 		meta.setOption("columns", c.name, schema.getColumnTypeName(c.type));
 		columnPaths.emplace_back(getColumnFile(c));
+		columnOrder << c.name;
+		if (i != schema.columns.size() - 1)
+			columnOrder << ",";
 	}
-	rowCount = stoi(meta.getOption("rows", "count", "0"));
+	
+	meta.setOption("columnOrder", "order", columnOrder.str());
+}
+
+Table::Table(const Config& globalConfig, const string& tableName)
+{
+	init(globalConfig, tableName);
+	schema = Schema(tableName);
+
+	// TODO: error handling if no _meta file
+	stringstream order(meta.getOption("columnOrder", "order"));
+	string columnName;
+
+	while (getline(order, columnName, ','))
+	{
+
+		string columnType = meta.getOption("columns", columnName);
+		Column c{
+			columnName,
+			schema.getColumnType(columnType)
+		};
+		// Skip first column which is always "ts"
+		if (columnName != "ts")
+		{
+			schema.addColumn(c);
+		}
+
+		columnPaths.emplace_back(getColumnFile(c));
+	}
 }
 
 void Table::write(Row row)
