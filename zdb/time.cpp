@@ -3,24 +3,17 @@
 #include <ctime>
 #include <sstream>
 #include <iomanip>
-
-string formatNanos(long long nanoseconds, const char* format)
-{
-	long long seconds = nanoseconds / nanos_to_seconds;
-	long long nanosecondPart = nanoseconds % nanos_to_seconds;
-	tm* timeinfo = gmtime(&seconds);
-
-	char buffer[48];
-	size_t strlen = strftime(buffer, sizeof(buffer), format, timeinfo);
-
-	sprintf(buffer + strlen, ".%09lld", nanosecondPart);
-
-	return buffer;
-}
+#include <fmt/core.h>
+#include <fmt/chrono.h>
 
 string formatNanos(long long nanoseconds)
 {
-	return formatNanos(nanoseconds, date_format);
+	long long seconds = nanoseconds / nanos_to_seconds;
+	long long nanosecondPart = nanoseconds % nanos_to_seconds;
+	tm timeinfo;
+	gmtime_s(&timeinfo , &seconds);
+
+	return fmt::format("{:%Y-%m-%d %H:%M:%S}.{:09}", timeinfo, nanosecondPart);
 }
 
 long long parseNanos(string datetime, const char* format)

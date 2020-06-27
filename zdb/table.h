@@ -19,6 +19,8 @@ enum class PartitionBy
 	YEAR
 };
 
+
+
 class Table {
 public:
 	Table(const Config& globalConfig, const Schema& schema);

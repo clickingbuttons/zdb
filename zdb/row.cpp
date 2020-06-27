@@ -1,9 +1,7 @@
 #include "row.h"
 #include "time.h"
-#include <iomanip>
-#include <iostream>
-#include <sstream>
 #include <variant>
+#include <fmt/core.h>
 
 Row::Row(Timestamp timestamp)
 {
@@ -18,6 +16,8 @@ Row::Row(Timestamp timestamp, shared_ptr<Schema> schema)
 	this->schema = schema;
 }
 
+#pragma warning(push)
+#pragma warning(disable: 4244)
 Row::Row(Timestamp timestamp, shared_ptr<Schema> schema, vector<RowValueVariant> rowValues)
 	: Row(timestamp, schema)
 {
@@ -78,7 +78,7 @@ Row::Row(Timestamp timestamp, shared_ptr<Schema> schema, vector<RowValueVariant>
 			Symbol sym = get<Symbol>(rowValues[i]);
 			if (strlen(sym) > maxStrLength)
 			{
-				throw runtime_error("Symbol \"" + string(sym) + "\"" + " must be " + to_string(maxStrLength) + " characters or shorter");
+				throw length_error(fmt::format("Symbol {} must be {} or less characters long\n", sym, maxStrLength));
 			}
 			strcpy_s(val.sym, sizeof(val.sym), sym);
 			break;
@@ -90,6 +90,7 @@ Row::Row(Timestamp timestamp, shared_ptr<Schema> schema, vector<RowValueVariant>
 		columns.push_back(val);
 	}
 }
+#pragma warning(pop)
 
 void Row::put(RowValue const &value)
 {
@@ -99,43 +100,4 @@ void Row::put(RowValue const &value)
 bool Row::operator<(const Row& other) const
 {
 	return columns[0].ts < other.columns[0].ts;
-}
-
-constexpr double micros_to_cents = 1000000;
-
-ostream& operator<<(ostream& os, Row const& row)
-{
-	char buffer[8];
-	for (size_t i = 0; i < row.schema->columns.size(); i++)
-	{
-		switch (row.schema->columns[i].type) {
-		case ColumnType::TIMESTAMP:
-			os << formatNanos(row.columns[i].ts);
-			break;
-		case ColumnType::CURRENCY:
-		{
-			int64 microCents = row.columns[i].i64;
-			float64 dollars = microCents / micros_to_cents;
-			sprintf_s(buffer, sizeof(buffer), "%-5g", dollars);
-			os << buffer;
-			if (strlen(buffer) == 5)
-			{
-				os << " ";
-			}
-			break;
-		}
-		case ColumnType::SYMBOL:
-			os << left << setw(6) << row.columns[i].sym;
-			break;
-		case ColumnType::UINT32:
-			os << left << setw(6) << row.columns[i].ui32;
-			break;
-		default:
-			os << "unknown";
-			break;
-		}
-		os << " ";
-	}
-
-	return os;
 }

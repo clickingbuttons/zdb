@@ -2,6 +2,8 @@
 #include <fstream>
 #include <algorithm> 
 #include <cctype>
+#include <fmt/core.h>
+#include <fmt/ostream.h>
 
 // trim from start (in place)
 static inline void ltrim(string& s) {
@@ -12,8 +14,8 @@ static inline void ltrim(string& s) {
 
 // trim from end (in place)
 static inline void rtrim(string& s) {
-	s.erase(std::find_if(s.rbegin(), s.rend(), [](int ch) {
-		return !std::isspace(ch);
+	s.erase(find_if(s.rbegin(), s.rend(), [](int ch) {
+		return !isspace(ch);
 	}).base(), s.end());
 }
 
@@ -76,10 +78,10 @@ void Config::write()
 
 	for (auto const& [section, columns] : sections)
 	{
-		outfile << '[' << section << ']' << endl;
+		fmt::print(outfile, "[{}]\n", section);
 		for (auto const& [key, val] : columns)
 		{
-			outfile << trim(key) << '=' << trim(val) << std::endl;
+			fmt::print(outfile, "{}={}\n", key, val);
 		}
 	}
 }

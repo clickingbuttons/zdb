@@ -1,5 +1,8 @@
 #include "schema.h"
 #include <stdexcept>
+#include <regex>
+#include <sstream>
+#include <fmt/ostream.h>
 
 Schema::Schema()
 {
