@@ -16,8 +16,15 @@ path getDir(const Config& globalConfig, const string& tableName)
 	return dir;
 }
 
-void Table::init(const Config& globalConfig, string const& tableName)
+void Table::init(string const& tableName)
 {
+	// We don't use C-style output from <stdio>
+	ios::sync_with_stdio(false);
+
+	// Global config
+	Config globalConfig = Config("zdb.conf");
+	locale::global(locale(globalConfig.getOption("locale", "default", "en_US.UTF-8")));
+
 	dir = getDir(globalConfig, tableName);
 	meta = Config(path(dir).append("_meta"));
 	symbolPath = path(dir).append("_symbols");
@@ -26,9 +33,9 @@ void Table::init(const Config& globalConfig, string const& tableName)
 }
 
 // Long member initializer to avoid using pointers in class members
-Table::Table(const Config &globalConfig, const Schema& s)
+Table::Table(const Schema& s)
 {
-	init(globalConfig, s.name);
+	init(s.name);
 	schema = s;
 
 	ostringstream columnOrder;
@@ -45,9 +52,9 @@ Table::Table(const Config &globalConfig, const Schema& s)
 	meta.setOption("columnOrder", "order", columnOrder.str());
 }
 
-Table::Table(const Config& globalConfig, const string& tableName)
+Table::Table(const string& tableName)
 {
-	init(globalConfig, tableName);
+	init(tableName);
 	schema = Schema(tableName);
 
 	// TODO: error handling if no _meta file

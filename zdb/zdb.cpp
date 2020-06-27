@@ -8,14 +8,6 @@ using namespace std;
 
 int main()
 {
-	// Speed
-	ios::sync_with_stdio(false);
-	locale::global(locale("en_US.UTF-8"));
-
-	// Global config
-	Config config = Config("zdb.conf");
-	config.read();
-
 	Schema agg1dSchema = Schema("agg1d", {
 		{"sym", ColumnType::SYMBOL},
 		{"open", ColumnType::CURRENCY},
@@ -26,7 +18,7 @@ int main()
 		{"volume", ColumnType::UINT64}
 		});
 
-	Table agg1d = Table(config, agg1dSchema);
+	Table agg1d = Table(agg1dSchema);
 
 	shared_ptr<Schema> sharedSchema = make_shared<Schema>(agg1d.schema);
 	agg1d.write({

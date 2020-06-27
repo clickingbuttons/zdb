@@ -7,7 +7,6 @@
 #include <fmt/ostream.h>
 #include <sstream>
 #include <string>
-#include <regex>
 
 using namespace std;
 
@@ -54,9 +53,13 @@ struct fmt::formatter<Row> : fmt::formatter<string_view> {
 				numDigits++;
 			}
 			res = fmt::format("{:<{}.{}f}", dollars, numDigits, sigFigs - numDigits);
-			// Replace trailing .0
-			regex trailingZero("(\\.[^0]*)0+$");
-			res = regex_replace(res, trailingZero, "$1");
+			// Remove trailing zeros
+			if (sigFigs - numDigits > 0)
+			{
+				res.erase(find_if(res.rbegin(), res.rend(), [](int ch) {
+					return ch != '0';
+				}).base(), res.end());
+			}
 		}
 
 		return fmt::format("{:<{}}", res, sigFigs + 1);
