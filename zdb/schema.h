@@ -10,18 +10,30 @@ using namespace std;
 
 enum class ColumnType
 {
-	TIMESTAMP,
-	CURRENCY,
-	SYMBOL,
-	INT32,
-	UINT32, // Good for up to 4.29B volume
-	INT64,
-	UINT64,
-	FLOAT32,
-	FLOAT64
+  TIMESTAMP,
+  CURRENCY,
+  SYMBOL,
+  INT32,
+  UINT32, // Good for up to 4.29B volume
+  INT64,
+  UINT64,
+  FLOAT32,
+  FLOAT64
 };
 
-// Nanoseconds since epoch, formatted in time.h
+constexpr const char* ColumnTypeNames[] = {
+  "TIMESTAMP",
+  "CURRENCY",
+  "SYMBOL",
+  "INT32",
+  "UINT32",
+  "INT64",
+  "UINT64",
+  "FLOAT32",
+  "FLOAT64"
+};
+
+// Nanoseconds since epoch, formatted in format.h
 using Timestamp = long long;
 // Decimal numbers stored as float32 but read as int64 for higher precision
 // I decided float32s are better than uint32 since we get a range bigger than [0, 4294967295]
@@ -48,46 +60,46 @@ using RowValueVariant = variant<Symbol, int64, uint64, float64, int32, uint32, f
 // http://quick-bench.com/qghyMggY7DzUKtKP4B85DHJmPg4
 union RowValue
 {
-	Timestamp ts;
-	Currency cur;
-	PreciseCurrency pcur;
-	int32 i32;
-	uint32 ui32;
-	int64 i64;
-	uint64 ui64;
-	float32 f32;
-	float64 f64;
-	// For storing symbols (string storage not yet implemented)
-	char sym[8];
-	RowValue() { ts = 0; };
-	RowValue(Timestamp timestamp) { ts = timestamp; };
-	~RowValue() {};
-	RowValue(const RowValue& other)
-	{
-		memcpy(sym, other.sym, sizeof(sym));
-	};
+  Timestamp ts;
+  Currency cur;
+  PreciseCurrency pcur;
+  int32 i32;
+  uint32 ui32;
+  int64 i64;
+  uint64 ui64;
+  float32 f32;
+  float64 f64;
+  // For storing symbols (string storage not yet implemented)
+  char sym[8];
+  RowValue() { ts = 0; };
+  RowValue(Timestamp timestamp) { ts = timestamp; };
+  ~RowValue() {};
+  RowValue(const RowValue& other)
+  {
+    memcpy(sym, other.sym, sizeof(sym));
+  };
 };
 
 struct Column
 {
-	string name;
-	ColumnType type;
+  string name;
+  ColumnType type;
 };
 
 
 class Schema {
 public:
-	Schema();
-	Schema(string name);
-	Schema(string name, vector<pair<string, ColumnType>> columns);
-	void addColumn(Column c);
-	void addColumn(string name, ColumnType type);
-	vector<Column> columns;
-	string name;
-	static string getColumnTypeName(ColumnType c);
-	static ColumnType getColumnType(string c);
-	// Copy assignment operator.
-	Schema& operator=(const Schema& other);
+  Schema();
+  Schema(string name);
+  Schema(string name, vector<pair<string, ColumnType>> columns);
+  void addColumn(Column c);
+  void addColumn(string name, ColumnType type);
+  vector<Column> columns;
+  string name;
+  static string getColumnTypeName(ColumnType c);
+  static ColumnType getColumnType(string c);
+  // Copy assignment operator.
+  Schema& operator=(const Schema& other);
 private:
-	static vector<pair<ColumnType, string>> columnTypes;
+  static vector<pair<ColumnType, string>> columnTypes;
 };
