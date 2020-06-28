@@ -1,31 +1,24 @@
 #include "row.h"
 #include "time.h"
-#include <variant>
 #include <fmt/core.h>
+#include <fmt/ostream.h>
+#include <sstream>
+#include <variant>
 
 Row::Row(Timestamp timestamp)
 {
 	columns.push_back(RowValue(timestamp));
 }
 
-// Delegating constructors seems okay
-// https://godbolt.org/z/SpWHv7
-Row::Row(Timestamp timestamp, shared_ptr<Schema> schema)
-	: Row(timestamp)
-{
-	this->schema = schema;
-}
-
 #pragma warning(push)
 #pragma warning(disable: 4244)
-Row::Row(Timestamp timestamp, shared_ptr<Schema> schema, vector<RowValueVariant> rowValues)
-	: Row(timestamp, schema)
+Row::Row(VariantRow variantRow, Schema const& schema)
 {
-	for (size_t i = 0; i < rowValues.size(); i++)
+	for (size_t i = 0; i < variantRow.columns.size(); i++)
 	{
 		RowValue val;
 		constexpr size_t maxStrLength = sizeof(val.sym) - 1;
-		switch (schema->columns[i + 1].type)
+		switch (schema.columns[i].type)
 		{
 		// 8 byte types
 		case ColumnType::INT64:
@@ -34,21 +27,21 @@ Row::Row(Timestamp timestamp, shared_ptr<Schema> schema, vector<RowValueVariant>
 				using type = decay_t<decltype(var)>;
 				if constexpr (!is_same<type, Symbol>::value)
 					val.i64 = var;
-				}, rowValues[i]);
+				}, variantRow.columns[i]);
 			break;
 		case ColumnType::UINT64:
 			visit([&](auto const& var) {
 				using type = decay_t<decltype(var)>;
 				if constexpr (!is_same<type, Symbol>::value)
 					val.ui64 = var;
-				}, rowValues[i]);
+				}, variantRow.columns[i]);
 			break;
 		case ColumnType::FLOAT64:
 			visit([&](auto const& var) {
 				using type = decay_t<decltype(var)>;
 				if constexpr (!is_same<type, Symbol>::value)
 					val.f64 = var;
-				}, rowValues[i]);
+				}, variantRow.columns[i]);
 			break;
 		// 4 byte types
 		case ColumnType::INT32:
@@ -56,14 +49,14 @@ Row::Row(Timestamp timestamp, shared_ptr<Schema> schema, vector<RowValueVariant>
 				using type = decay_t<decltype(var)>;
 				if constexpr (!is_same<type, Symbol>::value)
 					val.i32 = var;
-				}, rowValues[i]);
+				}, variantRow.columns[i]);
 			break;
 		case ColumnType::UINT32:
 			visit([&](auto const& var) {
 				using type = decay_t<decltype(var)>;
 				if constexpr (!is_same<type, Symbol>::value)
 					val.ui32 = var;
-				}, rowValues[i]);
+				}, variantRow.columns[i]);
 			break;
 		case ColumnType::CURRENCY:
 		case ColumnType::FLOAT32:
@@ -71,11 +64,11 @@ Row::Row(Timestamp timestamp, shared_ptr<Schema> schema, vector<RowValueVariant>
 				using type = decay_t<decltype(var)>;
 				if constexpr (!is_same<type, Symbol>::value)
 					val.f32 = var;
-				}, rowValues[i]);
+				}, variantRow.columns[i]);
 			break;
 		case ColumnType::SYMBOL:
 		{
-			Symbol sym = get<Symbol>(rowValues[i]);
+			Symbol sym = get<Symbol>(variantRow.columns[i]);
 			if (strlen(sym) > maxStrLength)
 			{
 				throw length_error(fmt::format("Symbol {} must be {} or less characters long\n", sym, maxStrLength));
@@ -84,7 +77,7 @@ Row::Row(Timestamp timestamp, shared_ptr<Schema> schema, vector<RowValueVariant>
 			break;
 		}
 		default:
-			throw runtime_error("Unable to convert to " + schema->getColumnTypeName(schema->columns[i].type));
+			throw runtime_error("Unable to convert to " + schema.getColumnTypeName(schema.columns[i].type));
 			break;
 		}
 		columns.push_back(val);
@@ -100,4 +93,82 @@ void Row::put(RowValue const &value)
 bool Row::operator<(const Row& other) const
 {
 	return columns[0].ts < other.columns[0].ts;
+}
+
+string formatCurrency(float64 dollars, size_t sigFigs = 7)
+{
+	string res(sigFigs + 4, '0'); // Fill with 0s
+	if (dollars >= pow(10, sigFigs))
+	{
+		res = fmt::format("{:1.{}e}", dollars, sigFigs - 4);
+		// Replace e+0 with e
+		size_t start_pos = res.find("e+0");
+		if (start_pos != string::npos)
+			res.replace(start_pos + 1, 2, "");
+		else
+		{
+			// Replace e-0 with e-
+			start_pos = res.find("e-0");
+			if (start_pos != string::npos)
+				res.replace(start_pos + 2, 1, "");
+		}
+	}
+	else
+	{
+		int numDigits = 0;
+		float64 tmpDollars = dollars;
+		while (tmpDollars > 1)
+		{
+			tmpDollars /= 10;
+			numDigits++;
+		}
+		res = fmt::format("{:<{}.{}f}", dollars, numDigits, sigFigs - numDigits);
+		// Remove trailing zeros
+		if (sigFigs - numDigits > 0)
+		{
+			res.erase(find_if(res.rbegin(), res.rend(), [](int ch) {
+				return ch != '0';
+				}).base(), res.end());
+		}
+	}
+
+	return fmt::format("{:<{}}", res, sigFigs + 1);
+}
+
+string Row::toString(Schema schema)
+{
+	double micros_to_cents = 1000000;
+
+	ostringstream os;
+	for (size_t i = 0; i < schema.columns.size(); i++)
+	{
+		switch (schema.columns[i].type) {
+		case ColumnType::TIMESTAMP:
+			fmt::print(os, formatNanos(columns[i].ts));
+			break;
+		case ColumnType::CURRENCY:
+		{
+			int64 microCents = columns[i].i64;
+			float64 dollars = microCents / micros_to_cents;
+			fmt::print(os, formatCurrency(dollars));
+			break;
+		}
+		case ColumnType::SYMBOL:
+			fmt::print(os, "{:>7}", columns[i].sym);
+			break;
+		case ColumnType::UINT32:
+			fmt::print(os, formatCurrency(columns[i].ui32));
+			break;
+		case ColumnType::UINT64:
+			fmt::print(os, formatCurrency(columns[i].ui64));
+			break;
+		default:
+			fmt::print(os, "?");
+			break;
+		}
+		if (i != schema.columns.size() - 1)
+			fmt::print(os, " ");
+	}
+
+	return os.str();
 }

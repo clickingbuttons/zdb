@@ -6,6 +6,8 @@
 #include <cctype>
 #include <stdexcept>
 #include <sstream>
+#include <variant>
+#include <fmt/core.h>
 
 path getDir(const Config& globalConfig, const string& tableName)
 {
@@ -86,10 +88,18 @@ void Table::write(Row row)
 
 void Table::write(vector<Row> rows)
 {
-	for (Row r : rows)
-	{
+	rowBuffer.insert(rowBuffer.end(), rows.begin(), rows.end());
+}
+
+void Table::write(VariantRow variantRow)
+{
+	write(Row(variantRow, schema));
+}
+
+void Table::write(vector<VariantRow> rows)
+{
+	for (VariantRow r : rows)
 		write(r);
-	}
 }
 
 path Table::getColumnFile(Column column)
@@ -219,7 +229,7 @@ vector<Row> Table::read(size_t fromRow, size_t toRow)
 		// Grab timestamp from first column
 		long long ts;
 		columnStreams[0].read(reinterpret_cast<char*>(&ts), sizeof(Timestamp));
-		Row r = Row(ts, sharedSchema);
+		Row r(ts);
 		for (size_t i = 1; i < numColumns; i++)
 		{
 			RowValue val;

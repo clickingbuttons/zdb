@@ -56,8 +56,8 @@ Schema agg1dSchema = Schema("agg1d", {
 
 ## Todo
 API TODO:
-- [ ] Use templates to avoid `sharedSchema`
-- [ ] Override ostream for Row so <fmt/core.h> not necessary
+- [x] ~~Use templates to avoid `sharedSchema`~~ Add class RowVariant instead.
+- [x] ~~Override ostream for Row so <fmt/core.h> not necessary~~ Added `Row::toString(Schema  &s)`
 
 Feature TODO:
 - [ ] Logging

@@ -1,5 +1,4 @@
 ﻿#include "table.h"
-#include "time.h"
 #include <iostream>
 #include <fmt/core.h>
 #include <locale>
@@ -18,23 +17,22 @@ int main()
 		{"volume", ColumnType::UINT64}
 		});
 
-	Table agg1d = Table(agg1dSchema);
+	Table agg1d(agg1dSchema);
 
-	shared_ptr<Schema> sharedSchema = make_shared<Schema>(agg1d.schema);
 	agg1d.write({
-		//					ts ,					sym, open,	  high,    low,  close, close^,     volume
-		Row(1073077200000054742, sharedSchema, { "MSFT", 40.23,		50,		30,		44,		44,		10445300 }),
-		Row(1073077200001234556, sharedSchema, { "AAPL", 300,		400,	200,	340,	340,	212312000 }),
-		Row(1073077212356789012, sharedSchema, { "AMZN", 40.234,	50,		30,		44,		44,		30312300 }),
-		Row(1073077212356789012, sharedSchema, { "BEVD", 1.2345,	50,		30,		44,		44,		161000000 }),
-		Row(1073077212356789012, sharedSchema, { "BKSH", 2567890,	50,		30,		44,		44,		5194967296 }),
+		//					ts ,      sym, open,  high,    low,  close, close^,     volume
+		VariantRow(1073077200000054742, { "MSFT", 40.23,	50,		30,		44,		44,		10445300 }),
+		VariantRow(1073077200001234556, { "AAPL", 300,		400,	200,	340,	340,	212312000 }),
+		VariantRow(1073077212356789012, { "AMZN", 40.234,	50,		30,		44,		44,		30312300 }),
+		VariantRow(1073077212356789012, { "BEVD", 1.2345,	50,		30,		44,		44,		161000000 }),
+		VariantRow(1073077212356789012, { "BKSH", 2567890,	50,		30,		44,		44,		5194967296 }),
 	});
 	agg1d.flush();
 
 	vector<Row> myRows = agg1d.read();
 	for (Row row: myRows)
 	{
-		fmt::print("{}\n", row);
+		fmt::print("{}\n", row.toString(agg1d.schema));
 	}
 
 	cin.get();

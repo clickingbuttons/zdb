@@ -19,8 +19,6 @@ enum class PartitionBy
 	YEAR
 };
 
-
-
 class Table {
 public:
 	Table(const Schema& schema);
@@ -29,6 +27,8 @@ public:
 	vector<Row> read();
 	void write(Row row);
 	void write(vector<Row> rows);
+	void write(VariantRow variantRow);
+	void write(vector<VariantRow> variantRows);
 	void flush();
 	Schema schema;
 private:
@@ -52,4 +52,6 @@ private:
 	size_t rowCount;
 	// Shared code between constructors
 	void init(string const& dir);
+	// Evaluates variants in row
+	void parseVariants(Row &row);
 };
