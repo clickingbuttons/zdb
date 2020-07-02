@@ -6,7 +6,6 @@ using namespace std;
 
 int main()
 {
-  zlog::debug("hello {}\n", "world");
   Schema agg1dSchema = Schema("agg1d", {
     {"sym", ColumnType::SYMBOL},
     {"open", ColumnType::CURRENCY},
@@ -29,11 +28,10 @@ int main()
   });
   agg1d.flush();
 
-  auto rows = agg1d.read();
-  cout << rows.size() << endl;
+  vector<Row> rows = agg1d.read();
 
-  // for (Row row : agg1d.read())
-  //   cout << row.toString(agg1d.schema) << '\n';
+  for (Row row : agg1d.read())
+    cout << row.toString(agg1d.schema) << '\n';
 
   cin.get();
   return 0;

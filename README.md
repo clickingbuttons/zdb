@@ -62,9 +62,9 @@ Feature TODO:
 - [x] Logging
   - [x] Debug, info, error
   - [x] To file with level
-- [ ] Error messages
-  - [ ] Missing meta file
-  - [ ] Symbol too large
+- [x] Error messages
+  - [x] Missing meta file
+  - [x] Symbol too large
 - [ ] Out-of-order insertions
   - [ ] Warning when not in order
 - [ ] Scan forward/backward by timestamp

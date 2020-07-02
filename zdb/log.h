@@ -1,5 +1,6 @@
 #pragma once
 #include <iostream>
+#include <fstream>
 #include <fmt/core.h>
 #include <fmt/ostream.h>
 
@@ -43,6 +44,8 @@ private:
   Logger()
     : logStream("zdb.log")
   {
+    // We don't use C-style output from <stdio>
+    ios::sync_with_stdio(false);
   }
 };
 
@@ -68,4 +71,9 @@ namespace zlog
   {
     Logger::getInstance().log(LogLevel::ERROR, format_str, args...);
   }
-}  // namespace log
+  template <typename S, typename... Args>
+  inline void critical(const S& format_str, Args&&... args)
+  {
+    Logger::getInstance().log(LogLevel::CRITICAL, format_str, args...);
+  }
+  }  // namespace log

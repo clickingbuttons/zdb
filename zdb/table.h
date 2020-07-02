@@ -3,10 +3,12 @@
 #include "row.h"
 #include "schema.h"
 #include "config.h"
+#include <exception>
 #include <filesystem>
-#include <vector>
-#include <unordered_map>
 #include <fstream>
+#include <fmt/core.h>
+#include <unordered_map>
+#include <vector>
 
 using namespace std;
 using namespace filesystem;
@@ -19,7 +21,22 @@ enum class PartitionBy
   YEAR
 };
 
-class Table {
+class NoTableException : public exception
+{
+  public:
+  string tableName;
+  NoTableException(const string& tableName)
+      : tableName(tableName)
+  {
+  }
+  virtual const char* what() const throw()
+  {
+    return fmt::format("Table {} does not exist.", tableName).c_str();
+  }
+};
+
+class Table
+{
 public:
   Table(const Schema& schema);
   Table(const string& tableName);

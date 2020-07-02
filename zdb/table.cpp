@@ -1,4 +1,5 @@
 #include "table.h"
+#include "log.h"
 #include <algorithm>
 #include <fmt/core.h>
 #include <fstream>
@@ -16,11 +17,8 @@ path getDir(const Config& globalConfig, const string& tableName)
 
 void Table::init(string const& tableName)
 {
-  // We don't use C-style output from <stdio>
-  ios::sync_with_stdio(false);
-
   // Global config
-  Config globalConfig = Config("zdb.conf");
+  Config globalConfig("zdb.conf");
   locale::global(locale(globalConfig.getOption("locale", "default", "en_US.UTF-8")));
 
   dir = getDir(globalConfig, tableName);
@@ -55,8 +53,18 @@ Table::Table(const string& tableName)
   init(tableName);
   schema = Schema(tableName);
 
-  // TODO: error handling if no _meta file
-  stringstream order(meta.getOption("columnOrder", "order"));
+  string columnOrder;
+  try
+  {
+    columnOrder = meta.getOption("columnOrder", "order");
+  }
+  catch (const out_of_range& oor)
+  {
+    NoTableException ex(tableName);
+    zlog::error(ex.what());
+    throw ex;
+  }
+  stringstream order(columnOrder);
   string columnName;
 
   while (getline(order, columnName, ','))

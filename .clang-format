@@ -1,2 +1,8 @@
+# https://clang.llvm.org/docs/ClangFormatStyleOptions.html
+# https://clangformat.com/
+# https://webkit.org/code-style-guidelines/
 BasedOnStyle: WebKit
 IndentWidth: 2
+TabWidth: 2
+BreakBeforeBraces: Allman
+UseTab: Never

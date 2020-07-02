@@ -1,6 +1,6 @@
 #include "row.h"
 #include "format.h"
-#include <fmt/core.h>
+#include "log.h"
 #include <fmt/ostream.h>
 #include <sstream>
 #include <variant>
@@ -71,7 +71,9 @@ Row::Row(VariantRow variantRow, Schema const& schema)
       Symbol sym = get<Symbol>(variantRow.columns[i]);
       if (strlen(sym) > maxStrLength)
       {
-        throw length_error(fmt::format("Symbol {} must be {} or less characters long\n", sym, maxStrLength));
+        SymbolTooLongException ex(sym);
+        zlog::error(ex.what());
+        throw ex;
       }
       strcpy_s(val.sym, sizeof(val.sym), sym);
       break;
