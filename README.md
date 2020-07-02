@@ -59,9 +59,9 @@ API TODO:
 - [x] ~~Override ostream for Row so <fmt/core.h> not necessary~~ Added `Row::toString(Schema  &s)`
 
 Feature TODO:
-- [ ] Logging
-  - [ ] Debug, info, error
-  - [ ] To file with level
+- [x] Logging
+  - [x] Debug, info, error
+  - [x] To file with level
 - [ ] Error messages
   - [ ] Missing meta file
   - [ ] Symbol too large

@@ -10,7 +10,8 @@ Config::Config()
 {
 }
 
-Config::Config(filesystem::path path) : path(path)
+Config::Config(filesystem::path path)
+  : path(path)
 {
   read();
 }
@@ -57,6 +58,7 @@ void Config::write()
     fmt::print(outfile, "[{}]\n", section);
     for (auto const& [key, val] : columns)
       fmt::print(outfile, "{}={}\n", key, val);
+    outfile << '\n';
   }
 }
 
