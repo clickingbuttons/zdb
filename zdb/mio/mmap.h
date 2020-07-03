@@ -25,6 +25,7 @@
 
 #include <cstdint>
 #include <iterator>
+#include <filesystem>
 #include <string>
 #include <system_error>
 
@@ -117,8 +118,7 @@ struct basic_mmap
      * while establishing the mapping is wrapped in a `std::system_error` and is
      * thrown.
      */
-  template <typename String>
-  basic_mmap(const String& path, const size_type offset = 0, const size_type length = map_entire_file)
+  basic_mmap(const std::filesystem::path& path, const size_type offset = 0, const size_type length = map_entire_file)
   {
     std::error_code error;
     map(path, offset, length, error);
@@ -291,8 +291,7 @@ struct basic_mmap
      * `length` is the number of bytes to map. It may be `map_entire_file`, in which
      * case a mapping of the entire file is created.
      */
-  template <typename String>
-  void map(const String& path, const size_type offset,
+  void map(const std::filesystem::path& path, const size_type offset,
       const size_type length, std::error_code& error);
 
   /**
@@ -307,8 +306,7 @@ struct basic_mmap
      * 
      * The entire file is mapped.
      */
-  template <typename String>
-  void map(const String& path, std::error_code& error)
+  void map(const std::filesystem::path& path, std::error_code& error)
   {
     map(path, 0, map_entire_file, error);
   }
@@ -504,7 +502,5 @@ mmap_sink make_mmap_sink(const MappingToken& token, std::error_code& error)
 }
 
 } // namespace mio
-
-#include "mmap.ipp"
 
 #endif // MIO_MMAP_HEADER

@@ -21,11 +21,11 @@
 #ifndef MIO_BASIC_MMAP_IMPL
 #define MIO_BASIC_MMAP_IMPL
 
-#include "mmap.h"
-#include "string_util.h"
-#include "page.h"
+#include "../mmap.h"
+#include "../page.h"
 
 #include <algorithm>
+#include <filesystem>
 
 #ifndef _WIN32
 #include <fcntl.h>
@@ -55,28 +55,9 @@ namespace detail
       return n & 0xffffffff;
     }
 
-    template <
-        typename String,
-        typename = typename std::enable_if<
-            std::is_same<typename char_type<String>::type, char>::value>::type>
-    file_handle_type open_file_helper(const String& path, const access_mode mode)
+    file_handle_type open_file_helper(const std::filesystem::path& path, const access_mode mode)
     {
-      return ::CreateFileA(c_str(path),
-          mode == access_mode::read ? GENERIC_READ : GENERIC_READ | GENERIC_WRITE,
-          FILE_SHARE_READ | FILE_SHARE_WRITE,
-          0,
-          OPEN_EXISTING,
-          FILE_ATTRIBUTE_NORMAL,
-          0);
-    }
-
-    template <typename String>
-    typename std::enable_if<
-        std::is_same<typename char_type<String>::type, wchar_t>::value,
-        file_handle_type>::type
-    open_file_helper(const String& path, const access_mode mode)
-    {
-      return ::CreateFileW(c_str(path),
+      return ::CreateFileW(path.c_str(),
           mode == access_mode::read ? GENERIC_READ : GENERIC_READ | GENERIC_WRITE,
           FILE_SHARE_READ | FILE_SHARE_WRITE,
           0,
@@ -103,12 +84,11 @@ namespace detail
     return error;
   }
 
-  template <typename String>
-  file_handle_type open_file(const String& path, const access_mode mode,
+  file_handle_type open_file(const std::filesystem::path& path, const access_mode mode,
       std::error_code& error)
   {
     error.clear();
-    if (detail::empty(path))
+    if (path.empty())
     {
       error = std::make_error_code(std::errc::invalid_argument);
       return invalid_handle;
@@ -287,12 +267,11 @@ basic_mmap<AccessMode, ByteT>::mapping_handle() const noexcept
 }
 
 template <access_mode AccessMode, typename ByteT>
-template <typename String>
-void basic_mmap<AccessMode, ByteT>::map(const String& path, const size_type offset,
+void basic_mmap<AccessMode, ByteT>::map(const std::filesystem::path& path, const size_type offset,
     const size_type length, std::error_code& error)
 {
   error.clear();
-  if (detail::empty(path))
+  if (path.empty())
   {
     error = std::make_error_code(std::errc::invalid_argument);
     return;

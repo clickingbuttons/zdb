@@ -12,7 +12,7 @@ find_package(fmt CONFIG REQUIRED)
 
 # Add source to this project's executable.
 include_directories(${PROJECT_SOURCE_DIR})
-add_executable (zdb "zdb.cpp" "row.cpp" "schema.cpp" "table_write.cpp" "config.cpp"  "format.cpp" "variantrow.cpp" "log.h"  "table_read.cpp" "table_shared.cpp"  "mio/mmap.cpp")
+add_executable (zdb "zdb.cpp" "row.cpp" "schema.cpp" "table_write.cpp" "config.cpp"  "format.cpp" "variantrow.cpp" "log.h"  "table_read.cpp" "table_shared.cpp"  "mio/detail/mmap.cpp")
 configure_file(zdb.conf zdb.conf COPYONLY)
 
 target_link_libraries(zdb PRIVATE fmt::fmt)
