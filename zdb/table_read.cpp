@@ -25,7 +25,6 @@ vector<Row> Table::read(size_t fromRow, size_t toRow)
     columnStreams.emplace_back(ifstream(columnPaths[i], ios::binary));
     //columnStream.seekg(fromRow);
   }
-  shared_ptr<Schema> sharedSchema = make_shared<Schema>(schema);
   for (size_t rowNum = fromRow; rowNum < toRow; rowNum++)
   {
     // Grab timestamp from first column

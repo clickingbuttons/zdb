@@ -23,7 +23,7 @@ enum class PartitionBy
 
 class NoTableException : public exception
 {
-  public:
+public:
   string tableName;
   NoTableException(const string& tableName)
       : tableName(tableName)
@@ -49,14 +49,9 @@ private:
   path dir;
   // Metadata saved to _meta
   Config meta;
-  // Symbol table saved to _symbols. Stored twice in RAM since there is no array-backed map
-  path symbolPath;
-  // TODO: Support strings longer than 8 bytes on heap
-  unordered_map<string, uint32> symbolSet;
-  vector<string> symbols;
   // Helper to get path for column based on its type
   path getColumnFile(Column column);
-  // Cache column files to avoid open/close on every read/write
+  // Cache to avoid generating paths each time
   vector<path> columnPaths;
 
 
@@ -66,6 +61,11 @@ public:
   vector<Row> read();
 private:
   void readSymbolFile();
+  // Symbol table saved to _symbols. Stored twice in RAM since there is no array-backed map
+  path symbolPath;
+  // TODO: Support strings longer than 8 bytes on heap
+  unordered_map<string, uint32> symbolSet;
+  vector<string> symbols;
 
 
 // ========= table_write.cpp ==========

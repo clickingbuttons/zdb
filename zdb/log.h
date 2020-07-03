@@ -34,7 +34,7 @@ public:
   {
     // Always log to file
     fmt::print(logStream, format_str, args...);
-    // Log to cerr if above warning
+    // Log to cerr if error or above
     if (l >= LogLevel::ERROR)
       fmt::print(cerr, format_str, args...);
     else
