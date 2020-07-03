@@ -16,6 +16,13 @@ Config::Config(filesystem::path path)
   read();
 }
 
+Config& Config::getGlobal()
+{
+  static Config globalConfig("zdb.conf");
+
+  return globalConfig;
+}
+
 void Config::read()
 {
   ifstream infile(path);

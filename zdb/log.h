@@ -1,4 +1,5 @@
 #pragma once
+#include "config.h"
 #include <iostream>
 #include <fstream>
 #include <fmt/core.h>
@@ -46,6 +47,8 @@ private:
   {
     // We don't use C-style output from <stdio>
     ios::sync_with_stdio(false);
+    // Use specified encoding
+    locale::global(locale(Config::getGlobal().getOption("locale", "default", "en_US.UTF-8")));
   }
 };
 
@@ -76,4 +79,4 @@ namespace zlog
   {
     Logger::getInstance().log(LogLevel::CRITICAL, format_str, args...);
   }
-  }  // namespace log
+}  // namespace log

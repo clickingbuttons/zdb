@@ -3,9 +3,9 @@
 #include <fmt/core.h>
 #include <sstream>
 
-path getDir(const Config& globalConfig, const string& tableName)
+path getDir(const string& tableName)
 {
-  string dbPath = globalConfig.getOption("filesystem", "path", current_path().string());
+  string dbPath = Config::getGlobal().getOption("filesystem", "path", current_path().string());
   path dir = path(dbPath).append("data").append(tableName);
   create_directories(dir);
 
@@ -24,11 +24,7 @@ path Table::getColumnFile(Column column)
 
 void Table::init(string const& tableName)
 {
-  // Global config
-  Config globalConfig("zdb.conf");
-  locale::global(locale(globalConfig.getOption("locale", "default", "en_US.UTF-8")));
-
-  dir = getDir(globalConfig, tableName);
+  dir = getDir(tableName);
   meta = Config(path(dir).append("_meta"));
   symbolPath = path(dir).append("_symbols");
   readSymbolFile();

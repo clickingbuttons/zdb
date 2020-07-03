@@ -11,6 +11,7 @@ class Config {
 public:
   Config();
   Config(path path);
+  static Config& getGlobal();
   void read();
   void write();
   string getOption(string section, string option) const;
