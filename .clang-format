@@ -6,3 +6,5 @@ IndentWidth: 2
 TabWidth: 2
 BreakBeforeBraces: Allman
 UseTab: Never
+ConstructorInitializerIndentWidth: 4
+ContinuationIndentWidth: 4
