@@ -7,3 +7,4 @@ project ("zdb")
 
 # Include sub-projects.
 add_subdirectory ("zdb")
+add_subdirectory ("bench")

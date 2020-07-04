@@ -18,8 +18,7 @@
  * OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef MIO_PAGE_HEADER
-#define MIO_PAGE_HEADER
+#pragma once
 
 #ifdef _WIN32
 #include <windows.h>
@@ -74,5 +73,3 @@ inline size_t make_offset_page_aligned(size_t offset) noexcept
 }
 
 } // namespace mio
-
-#endif // MIO_PAGE_HEADER

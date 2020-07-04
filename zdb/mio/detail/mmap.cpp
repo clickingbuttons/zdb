@@ -17,10 +17,6 @@
  * CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
  * OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-
-#ifndef MIO_BASIC_MMAP_IMPL
-#define MIO_BASIC_MMAP_IMPL
-
 #include "../mmap.h"
 #include "../page.h"
 
@@ -457,57 +453,4 @@ basic_mmap<AccessMode, ByteT>::conditional_sync()
   // noop
 }
 
-template <access_mode AccessMode, typename ByteT>
-bool operator==(const basic_mmap<AccessMode, ByteT>& a,
-    const basic_mmap<AccessMode, ByteT>& b)
-{
-  return a.data() == b.data()
-      && a.size() == b.size();
-}
-
-template <access_mode AccessMode, typename ByteT>
-bool operator!=(const basic_mmap<AccessMode, ByteT>& a,
-    const basic_mmap<AccessMode, ByteT>& b)
-{
-  return !(a == b);
-}
-
-template <access_mode AccessMode, typename ByteT>
-bool operator<(const basic_mmap<AccessMode, ByteT>& a,
-    const basic_mmap<AccessMode, ByteT>& b)
-{
-  if (a.data() == b.data())
-  {
-    return a.size() < b.size();
-  }
-  return a.data() < b.data();
-}
-
-template <access_mode AccessMode, typename ByteT>
-bool operator<=(const basic_mmap<AccessMode, ByteT>& a,
-    const basic_mmap<AccessMode, ByteT>& b)
-{
-  return !(a > b);
-}
-
-template <access_mode AccessMode, typename ByteT>
-bool operator>(const basic_mmap<AccessMode, ByteT>& a,
-    const basic_mmap<AccessMode, ByteT>& b)
-{
-  if (a.data() == b.data())
-  {
-    return a.size() > b.size();
-  }
-  return a.data() > b.data();
-}
-
-template <access_mode AccessMode, typename ByteT>
-bool operator>=(const basic_mmap<AccessMode, ByteT>& a,
-    const basic_mmap<AccessMode, ByteT>& b)
-{
-  return !(a < b);
-}
-
 } // namespace mio
-
-#endif // MIO_BASIC_MMAP_IMPL

@@ -18,8 +18,7 @@
  * OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef MIO_MMAP_HEADER
-#define MIO_MMAP_HEADER
+#pragma once
 
 #include "page.h"
 
@@ -112,7 +111,6 @@ struct basic_mmap
      */
   basic_mmap() = default;
 
-#ifdef __cpp_exceptions
   /**
      * The same as invoking the `map` function, except any error that may occur
      * while establishing the mapping is wrapped in a `std::system_error` and is
@@ -142,7 +140,6 @@ struct basic_mmap
       throw std::system_error(error);
     }
   }
-#endif // __cpp_exceptions
 
   /**
      * `basic_mmap` has single-ownership semantics, so transferring ownership
@@ -398,30 +395,6 @@ struct basic_mmap
   typename std::enable_if<A == access_mode::read, void>::type conditional_sync();
 };
 
-template <access_mode AccessMode, typename ByteT>
-bool operator==(const basic_mmap<AccessMode, ByteT>& a,
-    const basic_mmap<AccessMode, ByteT>& b);
-
-template <access_mode AccessMode, typename ByteT>
-bool operator!=(const basic_mmap<AccessMode, ByteT>& a,
-    const basic_mmap<AccessMode, ByteT>& b);
-
-template <access_mode AccessMode, typename ByteT>
-bool operator<(const basic_mmap<AccessMode, ByteT>& a,
-    const basic_mmap<AccessMode, ByteT>& b);
-
-template <access_mode AccessMode, typename ByteT>
-bool operator<=(const basic_mmap<AccessMode, ByteT>& a,
-    const basic_mmap<AccessMode, ByteT>& b);
-
-template <access_mode AccessMode, typename ByteT>
-bool operator>(const basic_mmap<AccessMode, ByteT>& a,
-    const basic_mmap<AccessMode, ByteT>& b);
-
-template <access_mode AccessMode, typename ByteT>
-bool operator>=(const basic_mmap<AccessMode, ByteT>& a,
-    const basic_mmap<AccessMode, ByteT>& b);
-
 /**
  * This is the basis for all read-only mmap objects and should be preferred over
  * directly using `basic_mmap`.
@@ -502,5 +475,3 @@ mmap_sink make_mmap_sink(const MappingToken& token, std::error_code& error)
 }
 
 } // namespace mio
-
-#endif // MIO_MMAP_HEADER
