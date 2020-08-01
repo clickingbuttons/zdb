@@ -3,6 +3,7 @@
 #include "log.h"
 #include <fmt/ostream.h>
 #include <sstream>
+#include <string.h>
 #include <variant>
 
 Row::Row(Timestamp timestamp)
@@ -75,7 +76,7 @@ Row::Row(VariantRow variantRow, Schema const& schema)
         zlog::error(ex.what());
         throw ex;
       }
-      strcpy_s(val.sym, sizeof(val.sym), sym);
+      strcpy(val.sym, sym);
       break;
     }
     default:

@@ -11,7 +11,7 @@ Config::Config()
 }
 
 Config::Config(filesystem::path path)
-  : path(path)
+  : m_path(path)
 {
   read();
 }
@@ -25,7 +25,7 @@ Config& Config::getGlobal()
 
 void Config::read()
 {
-  ifstream infile(path);
+  ifstream infile(m_path);
 
   string sectionName = "default";
   string line;
@@ -39,8 +39,8 @@ void Config::read()
     {
       // New section
       size_t closeBrace = line.find(']');
-      line = line.substr(1, closeBrace == string::npos ? line.length() : closeBrace - 1);
-      sectionName = trim(line);
+      sectionName = line.substr(1, closeBrace == string::npos ? line.length() : closeBrace - 1);
+      trim(sectionName);
     }
     else
     {
@@ -48,8 +48,10 @@ void Config::read()
       // Invalid option: no value
       if (separatorIndex == string::npos)
         continue;
-      string key = trim(line.substr(0, separatorIndex));
-      string val = trim(line.substr(separatorIndex + 1, line.length()));
+      string key = line.substr(0, separatorIndex);
+      trim(key);
+      string val = line.substr(separatorIndex + 1, line.length());
+      trim(val);
       // Adds section and key if doesn't exist
       sections[sectionName][key] = val;
     }
@@ -58,7 +60,7 @@ void Config::read()
 
 void Config::write()
 {
-  ofstream outfile(path, ofstream::trunc);
+  ofstream outfile(m_path, ofstream::trunc);
 
   for (auto const& [section, columns] : sections)
   {
@@ -75,13 +77,13 @@ string Config::getOption(string section, string option) const
   return sections.at(section).at(option);
 }
 
-string Config::getOption(string section, string option, string default) const
+string Config::getOption(string section, string option, string ddefault) const
 {
   auto sect = sections.find(section);
   if (sect == sections.end())
-    return default;
+    return ddefault;
   auto val = sect->second.find(option);
-  return val == sect->second.end() ? default : val->second;
+  return val == sect->second.end() ? ddefault : val->second;
 }
 
 void Config::setOption(string section, string key, string val)

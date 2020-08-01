@@ -15,9 +15,9 @@ public:
   void read();
   void write();
   string getOption(string section, string option) const;
-  string getOption(string section, string option, string default) const;
+  string getOption(string section, string option, string ddefault) const;
   void setOption(string section, string key, string val);
 private:
-  path path;
+  path m_path;
   map<string, map<string, string>> sections;
 };

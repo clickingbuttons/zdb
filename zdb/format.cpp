@@ -20,14 +20,13 @@ void rtrim(string& s)
   s.erase(find_if(s.rbegin(), s.rend(), isSpace).base(), s.end());
 }
 
-string trim(string &s)
+void trim(string &s)
 {
   ltrim(s);
   rtrim(s);
-  return s;
 }
 
-string rtrimZeros(string &s)
+void rtrimZeros(string &s)
 {
   auto start = find_if(s.rbegin(), s.rend(), isZero).base();
   auto end = s.end();
@@ -35,18 +34,17 @@ string rtrimZeros(string &s)
   if (*(start - 1) == '.')
     start -= 1;
   s.replace(start, end, end - start, ' ');
-  return s;
 }
 
 string formatNanos(long long nanoseconds, string format)
 {
-  long long seconds = nanoseconds / nanos_to_seconds;
   long long nanosecondPart = nanoseconds % nanos_to_seconds;
-  tm timeinfo;
-  gmtime_s(&timeinfo , &seconds);
+  time_t timeinfo = nanoseconds / nanos_to_seconds;
+  gmtime(&timeinfo);
 
   string res = fmt::format(format, timeinfo, nanosecondPart);
-  return rtrimZeros(res);
+  rtrimZeros(res);
+  return res;
 }
 
 string formatNanos(long long nanoseconds)

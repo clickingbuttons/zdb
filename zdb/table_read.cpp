@@ -54,7 +54,7 @@ vector<Row> Table::read(size_t fromRow, size_t toRow)
       {
         columnStreams[i].read(val.sym, sizeof(uint32));
         string sym = symbols[val.i32];
-        strcpy_s(val.sym, sizeof(val.sym), sym.c_str());
+        strcpy(val.sym, sym.c_str());
         break;
       }
       case ColumnType::CURRENCY:
