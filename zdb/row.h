@@ -3,7 +3,6 @@
 #include "schema.h"
 #include "variantrow.h"
 #include <exception>
-#include <fmt/core.h>
 #include <string>
 #include <vector>
 
@@ -13,13 +12,15 @@ class SymbolTooLongException : public exception
 {
 public:
   string sym;
+  string message;
   SymbolTooLongException(const string& symbol)
     : sym(symbol)
   {
+    message = "Symbol {} must be {} or less characters long\n";
   }
   virtual const char* what() const throw()
   {
-    return fmt::format("Symbol {} must be {} or less characters long\n", sym, sizeof(RowValue().sym) - 1).c_str();
+    return message.c_str();
   }
 };
 

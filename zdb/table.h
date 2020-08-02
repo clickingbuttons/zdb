@@ -6,7 +6,6 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
-#include <fmt/core.h>
 #include <unordered_map>
 #include <vector>
 
@@ -25,13 +24,15 @@ class NoTableException : public exception
 {
 public:
   string tableName;
+  string message;
   NoTableException(const string& tableName)
       : tableName(tableName)
   {
+    message = "Table {} does not exist.";
   }
   virtual const char* what() const throw()
   {
-    return fmt::format("Table {} does not exist.", tableName).c_str();
+    return message.c_str();
   }
 };
 

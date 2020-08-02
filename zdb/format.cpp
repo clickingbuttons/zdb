@@ -38,9 +38,9 @@ void rtrimZeros(string &s)
 
 string formatNanos(long long nanoseconds, string format)
 {
+  time_t seconds = nanoseconds / nanos_to_seconds;
   long long nanosecondPart = nanoseconds % nanos_to_seconds;
-  time_t timeinfo = nanoseconds / nanos_to_seconds;
-  gmtime(&timeinfo);
+  tm timeinfo = *std::gmtime(&seconds);
 
   string res = fmt::format(format, timeinfo, nanosecondPart);
   rtrimZeros(res);
