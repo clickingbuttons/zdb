@@ -13,9 +13,8 @@ fn main() {
     ))
     .partition_by(PartitionBy::YEAR);
 
-  println!("{:?}", schema);
-
-  let agg1d = Table::open("agg1d");
+  let agg1d = Table::create_or_open(schema)
+    .expect("Could not open table");
 
   println!("{:?}", agg1d);
 }
