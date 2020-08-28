@@ -15,7 +15,7 @@ fn main() {
 
   println!("{:?}", schema);
 
-  let agg1d = Table::create(schema);
+  let agg1d = Table::open("agg1d");
 
   println!("{:?}", agg1d);
 }
