@@ -8,16 +8,17 @@ use crate::schema::*;
 use crate::table::meta::*;
 use crate::table::util::*;
 use std::{
-    fs::create_dir_all,
-    io::{Error,ErrorKind},
-    path::PathBuf
+  fs::create_dir_all,
+  io::{Error,ErrorKind}, path::PathBuf,
 };
 
 #[derive(Debug)]
 pub struct Table {
   schema: Schema,
-  data_path: PathBuf,
-  columns_files: Vec<memmap::MmapMut>
+  columns: Vec<TableColumn>,
+  row_index: usize,
+  column_index: usize,
+  meta_path: PathBuf
 }
 
 impl Table {
@@ -32,24 +33,30 @@ impl Table {
         "Table {name:?} already exists. Try Table::open({name:?}) instead", name=schema.name
       )));
     }
-    write_meta(meta_path, &schema)?;
 
-    Ok(Table {
-      columns_files: get_column_files(&data_path, &schema.columns, true),
-      data_path,
+    let table = Table {
+      columns: get_columns(&data_path, &schema.columns, true),
       schema,
-    })
+      column_index: 0,
+      row_index: 0,
+      meta_path
+    };
+    write_meta(&table)?;
+
+    Ok(table)
   }
 
   pub fn open(name: &str) -> std::io::Result<Table> {
     let data_path = get_data_path(name);
     let meta_path = get_meta_path(&data_path);
-    let schema = read_meta(meta_path, name);
+    let (schema, row_index) = read_meta(&meta_path, name);
 
     Ok(Table {
-      columns_files: get_column_files(&data_path, &schema.columns, false),
-      data_path,
+      columns: get_columns(&data_path, &schema.columns, false),
       schema,
+      column_index: 0,
+      row_index,
+      meta_path
     })
   }
 

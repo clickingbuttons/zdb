@@ -1,12 +1,14 @@
 use crate::schema::*;
+use crate::table::{Table};
 use std::path::PathBuf;
 use std::fs::{File,OpenOptions};
 use std::io::{BufReader,BufRead,Write};
 use std::str::FromStr;
 
-pub fn read_meta(meta_path: PathBuf, name: &str) -> Schema {
+pub fn read_meta(meta_path: &PathBuf, name: &str) -> (Schema, usize) {
   let mut schema = Schema::new(name);
-  let f = File::open(&meta_path)
+  let mut row_index = 0;
+  let f = File::open(meta_path)
     .expect(&format!("Could not open meta file {:?}", meta_path));
   let f = BufReader::new(f);
   let mut section = String::new();
@@ -28,27 +30,35 @@ pub fn read_meta(meta_path: PathBuf, name: &str) -> Schema {
       else if section == "partition_by" {
         schema.partition_by = PartitionBy::from_str(&my_line).unwrap();
       }
+      else if section == "row_index" {
+        row_index = my_line.parse::<usize>().expect(
+          &format!("Invalid row_index {}", my_line)
+        );
+      }
     }
   }
 
-  schema
+  (schema, row_index)
 }
 
-pub fn write_meta(meta_path: PathBuf, schema: &Schema) -> std::io::Result<()> {
+pub fn write_meta(table: &Table) -> std::io::Result<()> {
+  let meta_path = &table.meta_path;
   let mut f = OpenOptions::new()
     .write(true)
-    .create_new(true)
-    .open(&meta_path)
-    .expect(&format!("Could not create meta file {:?}", meta_path));
+    .create(true)
+    .open(&table.meta_path)
+    .expect(&format!("Could not open meta file {:?}", meta_path));
   
   let mut meta_text = String::from("[columns]\n");
-  meta_text += &schema.columns.iter()
+  meta_text += &table.schema.columns.iter()
     .skip(1)
     .map(|c| format!("{}, {:?}", c.name, c.r#type))
     .collect::<Vec<_>>()
     .join("\n");
   meta_text += "\n\n[partition_by]\n";
-  meta_text += &format!("{:?}", schema.partition_by);
+  meta_text += &format!("{:?}", &table.schema.partition_by);
+  meta_text += "\n\n[row_index]\n";
+  meta_text += &format!("{:?}", &table.row_index);
 
   f.write_all(meta_text.as_bytes())
     .expect(&format!("Could not write to meta file {:?}", meta_path));

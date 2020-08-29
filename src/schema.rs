@@ -1,16 +1,18 @@
 use std::fmt;
 use std::str::FromStr;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum ColumnType {
   TIMESTAMP,
   CURRENCY,
-  SYMBOL,
+  SYMBOL8, // 256 symbols
+  SYMBOL16, // 65536 symbols
+  SYMBOL32, // 4294967296 symbols
   I32,
   U32, // Good for up to 4.29B volume
+  F32,
   I64,
   U64,
-  F32,
   F64
 }
 
@@ -18,18 +20,20 @@ impl FromStr for ColumnType {
   type Err = ();
 
   fn from_str(input: &str) -> Result<ColumnType, Self::Err> {
-      match input {
-          "TIMESTAMP" => Ok(ColumnType::TIMESTAMP),
-          "CURRENCY" => Ok(ColumnType::CURRENCY),
-          "SYMBOL" => Ok(ColumnType::SYMBOL),
-          "I32" => Ok(ColumnType::I32),
-          "U32" => Ok(ColumnType::U32),
-          "I64" => Ok(ColumnType::I64),
-          "U64" => Ok(ColumnType::U64),
-          "F32" => Ok(ColumnType::F32),
-          "F64" => Ok(ColumnType::F64),
-          _      => Err(()),
-      }
+    match input {
+      "TIMESTAMP" => Ok(ColumnType::TIMESTAMP),
+      "CURRENCY" => Ok(ColumnType::CURRENCY),
+      "SYMBOL8" => Ok(ColumnType::SYMBOL8),
+      "SYMBOL16" => Ok(ColumnType::SYMBOL16),
+      "SYMBOL32" => Ok(ColumnType::SYMBOL32),
+      "I32" => Ok(ColumnType::I32),
+      "U32" => Ok(ColumnType::U32),
+      "I64" => Ok(ColumnType::I64),
+      "U64" => Ok(ColumnType::U64),
+      "F32" => Ok(ColumnType::F32),
+      "F64" => Ok(ColumnType::F64),
+      _      => Err(()),
+    }
   }
 }
 

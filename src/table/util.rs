@@ -1,9 +1,10 @@
-use crate::schema::Column;
+use crate::schema::{Column,ColumnType};
+use memmap::MmapMut;
 use std::{
   path::PathBuf,
-  fs::OpenOptions
+  fs::OpenOptions,
+  io::{BufReader,BufRead,ErrorKind},
 };
-use memmap::MmapMut;
 
 pub fn get_data_path(name: &str) -> PathBuf {
   let mut path = PathBuf::from("data");
@@ -17,34 +18,92 @@ pub fn get_meta_path(data_path: &PathBuf) -> PathBuf {
   path
 }
 
-pub fn get_col_path(data_path: &PathBuf, column: &Column) -> PathBuf {
+fn get_col_path(data_path: &PathBuf, column: &Column) -> PathBuf {
   let mut path = data_path.clone();
   path.push(&column.name);
-  path.set_extension(format!("{:?}", column.r#type));
+  path.set_extension(String::from(format!("{:?}", column.r#type).to_lowercase()));
   path
 }
 
-pub fn get_column_files(data_path: &PathBuf, columns: &Vec<Column>, init_file: bool) -> Vec<MmapMut> {
-  columns.iter()
-    .map(|column| get_col_path(data_path, &column))
-    .map(|path| {
-      let file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .open(&path)
-        .expect(&format!("Unable to open file {:?}", path));
-      if init_file {
-        // Allocate 1MB per-column to start
-        file.set_len(1024)
-          .expect(&format!("Could not truncate {:?}", path));
+fn get_symbol_path(data_path: &PathBuf, column: &Column) -> PathBuf {
+  let mut path = data_path.clone();
+  path.push(&column.name);
+  path.set_extension("symbols");
+  path
+}
+
+fn get_column_file(path: &PathBuf, init: bool) -> MmapMut {
+  let file = OpenOptions::new()
+    .read(true)
+    .write(true)
+    .create(true)
+    .open(&path)
+    .expect(&format!("Unable to open file {:?}", path));
+  if init {
+    // Allocate 1MB per-column to start
+    file.set_len(1024)
+      .expect(&format!("Could not truncate {:?}", path));
+  }
+  unsafe {
+    memmap::MmapOptions::new()
+    .map_mut(&file)
+    .expect(&format!("Could not access data from mmapped {:?}", path))
+  }
+}
+
+fn get_column_symbols(symbols_path: &PathBuf, column: &Column) -> Vec<String> {
+  let capacity = match column.r#type {
+    ColumnType::SYMBOL8 => 2 << 7,
+    ColumnType::SYMBOL16 => 2 << 15,
+    ColumnType::SYMBOL32 => 2 << 31,
+    _ => 0
+  };
+  let mut symbols = Vec::<String>::with_capacity(capacity);
+  if capacity > 0 {
+    let file = OpenOptions::new()
+      .read(true)
+      .open(&symbols_path);
+    match file {
+      Ok(file) => {
+        let f = BufReader::new(&file);
+        for line in f.lines() {
+          let my_line = line
+            .expect(&format!("Could not read line from symbol file {:?}", symbols_path));
+          symbols.push(my_line);
+        }
+      },
+      Err(error) => {
+        if error.kind() != ErrorKind::NotFound {
+          panic!("Problem opening symbol file {:?}: {:?}", symbols_path, error)
+        }
       }
-      (path, file)
+    };
+  }
+
+  symbols
+}
+
+#[derive(Debug)]
+pub struct TableColumn {
+  pub file: memmap::MmapMut,
+  pub path: PathBuf,
+  pub symbols_path: PathBuf,
+  pub symbols: Vec<String>,
+  pub r#type: ColumnType
+}
+
+pub fn get_columns(data_path: &PathBuf, columns: &Vec<Column>, init: bool) -> Vec<TableColumn> {
+  columns.iter()
+    .map(|column| {
+      let path = get_col_path(&data_path, &column);
+      let symbols_path = get_symbol_path(&data_path, &column);
+      TableColumn {
+        file: get_column_file(&path, init),
+        symbols: get_column_symbols(&symbols_path, &column),
+        symbols_path,
+        path,
+        r#type: column.r#type.clone()
+      }
     })
-    .map(|(path, file)| unsafe {
-      memmap::MmapOptions::new()
-        .map_mut(&file)
-        .expect(&format!("Could not access data from mmapped {:?}", path))
-    })
-    .collect::<Vec<_>>()
+    .collect::<Vec::<_>>()
 }
