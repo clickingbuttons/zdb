@@ -6,12 +6,12 @@ pub enum ColumnType {
   TIMESTAMP,
   CURRENCY,
   SYMBOL,
-  INT32,
-  UINT32, // Good for up to 4.29B volume
-  INT64,
-  UINT64,
-  FLOAT32,
-  FLOAT64
+  I32,
+  U32, // Good for up to 4.29B volume
+  I64,
+  U64,
+  F32,
+  F64
 }
 
 impl FromStr for ColumnType {
@@ -22,23 +22,15 @@ impl FromStr for ColumnType {
           "TIMESTAMP" => Ok(ColumnType::TIMESTAMP),
           "CURRENCY" => Ok(ColumnType::CURRENCY),
           "SYMBOL" => Ok(ColumnType::SYMBOL),
-          "INT32" => Ok(ColumnType::INT32),
-          "UINT32" => Ok(ColumnType::UINT32),
-          "INT64" => Ok(ColumnType::INT64),
-          "UINT64" => Ok(ColumnType::UINT64),
-          "FLOAT32" => Ok(ColumnType::FLOAT32),
-          "FLOAT64" => Ok(ColumnType::FLOAT64),
+          "I32" => Ok(ColumnType::I32),
+          "U32" => Ok(ColumnType::U32),
+          "I64" => Ok(ColumnType::I64),
+          "U64" => Ok(ColumnType::U64),
+          "F32" => Ok(ColumnType::F32),
+          "F64" => Ok(ColumnType::F64),
           _      => Err(()),
       }
   }
-}
-
-pub union Cell {
-  pub float32: f32,
-  pub float64: f64,
-  pub uint32: i32,
-  pub uint64: i64,
-  pub symbol: *const char
 }
 
 #[derive(Debug)]
