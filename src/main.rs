@@ -39,5 +39,7 @@ fn main() {
 
   agg1d.flush();
 
-  println!("{:?}", agg1d);
+  agg1d.read(0, 0);
+
+  // println!("{:?}", agg1d);
 }

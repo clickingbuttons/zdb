@@ -1,6 +1,7 @@
 mod util;
 mod meta;
 mod write;
+mod read;
 
 use crate::schema::*;
 // "meta" crate is reserved
