@@ -3,29 +3,17 @@ use crate::{schema::ColumnType, table::Table};
 use std::{io::Write, fs::OpenOptions};
 
 impl Table {
-  fn putbyte(&mut self, byte: u8) {
-    let offset = self.row_index;
-    self.columns[self.column_index].file[offset] = byte;
-    self.column_index += 1;
-  }
-  fn put2bytes(&mut self, bytes: &[u8; 2]) {
-    let offset = self.row_index * 2;
-    self.columns[self.column_index].file[offset..offset + 2].copy_from_slice(bytes);
-    self.column_index += 1;
-  }
-  fn put4bytes(&mut self, bytes: &[u8; 4]) {
-    let offset = self.row_index * 4;
-    self.columns[self.column_index].file[offset..offset + 4].copy_from_slice(bytes);
-    self.column_index += 1;
-  }
-  fn put8bytes(&mut self, bytes: &[u8; 8]) {
-    let offset = self.row_index * 8;
-    self.columns[self.column_index].file[offset..offset + 8].copy_from_slice(bytes);
+  // TODO: Use const generics once stable.
+  // https://github.com/rust-lang/rust/issues/44580
+  fn put_bytes(&mut self, bytes: &[u8]) {
+    let size = bytes.len();
+    let offset = self.row_index * size;
+    self.columns[self.column_index].file[offset..offset + size].copy_from_slice(bytes);
     self.column_index += 1;
   }
 
-  pub fn puttimestamp(&mut self, val: u64) {
-    self.putu64(val);
+  pub fn puttimestamp(&mut self, val: i64) {
+    self.puti64(val);
   }
   pub fn putcurrency(&mut self, val: f32) {
     self.putf32(val);
@@ -42,34 +30,64 @@ impl Table {
       }
     };
     match column.r#type {
-      ColumnType::SYMBOL8 => self.putbyte(index as u8),
-      ColumnType::SYMBOL16 => self.put2bytes(&(index as u16).to_le_bytes()),
-      ColumnType::SYMBOL32 => self.put4bytes(&(index as u32).to_le_bytes()),
-      _ => {}
+      ColumnType::SYMBOL8 => {
+        self.put_bytes(&(index as u8).to_le_bytes());
+      },
+      ColumnType::SYMBOL16 => {
+        self.put_bytes(&(index as u16).to_le_bytes());
+      },
+      ColumnType::SYMBOL32 => {
+        self.put_bytes(&(index as u32).to_le_bytes());
+      },
+      _ => {
+        panic!(format!("Unsupported column type {:?}", column.r#type));
+      }
     }
   }
   pub fn puti32(&mut self, val: i32) {
-    self.put4bytes(&val.to_le_bytes());
+    self.put_bytes(&val.to_le_bytes());
   }
   pub fn putu32(&mut self, val: u32) {
-    self.put4bytes(&val.to_le_bytes());
+    self.put_bytes(&val.to_le_bytes());
   }
   pub fn putf32(&mut self, val: f32) {
-    self.put4bytes(&val.to_le_bytes());
+    self.put_bytes(&val.to_le_bytes());
   }
   pub fn puti64(&mut self, val: i64) {
-    self.put8bytes(&val.to_le_bytes());
+    self.put_bytes(&val.to_le_bytes());
   }
   pub fn putu64(&mut self, val: u64) {
-    self.put8bytes(&val.to_le_bytes());
+    self.put_bytes(&val.to_le_bytes());
   }
   pub fn putf64(&mut self, val: f64) {
-    self.put8bytes(&val.to_le_bytes());
+    self.put_bytes(&val.to_le_bytes());
   }
 
   pub fn write(&mut self) {
     self.column_index = 0;
     self.row_index += 1;
+    // Check if next write will be larger than file
+    for c in &self.columns {
+      let size = c.file.len();
+      let row_size: usize = match c.r#type {
+        ColumnType::TIMESTAMP => 8,
+        ColumnType::CURRENCY => 4,
+        ColumnType::SYMBOL8 => 1,
+        ColumnType::SYMBOL16 => 2,
+        ColumnType::SYMBOL32 => 4,
+        ColumnType::I32 => 4,
+        ColumnType::U32 => 4,
+        ColumnType::F32 => 4,
+        ColumnType::I64 => 8,
+        ColumnType::U64 => 8,
+        ColumnType::F64 => 8,
+      };
+      if size <= row_size * self.row_index {
+        println!("Need to grow column file {:?}", c);
+        // https://man7.org/linux/man-pages/man2/mremap.2.html
+        // https://devblogs.microsoft.com/oldnewthing/20150130-00/?p=44793
+      }
+    }
   }
   pub fn flush(&mut self) {
     for column in &mut self.columns {
@@ -79,7 +97,7 @@ impl Table {
       if column.symbols.len() > 0 {
         let symbols_text = column.symbols.join("\n");
         let path = &column.symbols_path;
-      
+
         let mut f = OpenOptions::new()
           .write(true)
           .create(true)

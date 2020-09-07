@@ -46,8 +46,8 @@ fn get_column_file(path: &PathBuf, init: bool) -> MmapMut {
   }
   unsafe {
     memmap::MmapOptions::new()
-    .map_mut(&file)
-    .expect(&format!("Could not access data from mmapped {:?}", path))
+      .map_mut(&file)
+      .expect(&format!("Could not access data from mmapped {:?}", path))
   }
 }
 

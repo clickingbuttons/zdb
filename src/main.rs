@@ -1,8 +1,16 @@
 use zdb::schema::*;
 use zdb::table::*;
+use rand::Rng;
+
+fn generate_row() -> (i64, &'static str, f32, f32, f32, f32, f32, u64) {
+  let mut rng = rand::thread_rng();
+
+  (rng.gen(), "AAPL", rng.gen(), rng.gen(), rng.gen(), rng.gen(), rng.gen(), rng.gen())
+}
 
 fn main() {
-  let schema = Schema::new("agg1d").add_cols(vec!(
+  let schema = Schema::new("agg1d")
+    .add_cols(vec!(
       Column::new("ticker", ColumnType::SYMBOL16),
       Column::new("open", ColumnType::CURRENCY),
       Column::new("high", ColumnType::CURRENCY),
@@ -16,13 +24,17 @@ fn main() {
   let mut agg1d = Table::create_or_open(schema)
     .expect("Could not open table");
 
-  let rows = vec!(
-    (1073077200000054742u64, "MSFT",   40.23,     50.,  30.,    44.,     44.,   10445300u64),
-    (1073077200001234556u64, "AAPL",     300.,   400., 200.,   340.,    340.,  212312000u64),
-    (1073077212356789012u64, "AMZN",  40.234,     50.,  30.,    44.,     44.,   30312300u64),
-    (1073077212356789012u64, "BEVD",  1.2345,     50.,  30.,    44.,     44.,  161000000u64),
-    (1073077212356789012u64, "BKSH", 2567890.,    50.,  30.,    44.,     44., 5194967296u64)
+  let mut rows = vec!(
+    (1073077200000054742, "MSFT",   40.23,     50.,  30.,    44.,     44.,   10445300u64),
+    (1073077200001234556, "AAPL",     300.,   400., 200.,   340.,    340.,  212312000u64),
+    (1073077212356789012, "AMZN",  40.234,     50.,  30.,    44.,     44.,   30312300u64),
+    (1073077212356789012, "BEVD",  1.2345,     50.,  30.,    44.,     44.,  161000000u64),
+    (1073077212356789012, "BKSH", 2567890.,    50.,  30.,    44.,     44., 5194967296u64)
   );
+
+  for _i in 0..5 {
+    rows.push(generate_row());
+  }
 
   // Maybe one day we can do this dynamically...
   for r in rows {
@@ -39,7 +51,6 @@ fn main() {
 
   agg1d.flush();
 
-  agg1d.read(0, 0);
 
-  // println!("{:?}", agg1d);
+  agg1d.read(0, 0);
 }
