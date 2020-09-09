@@ -34,43 +34,43 @@ impl Table {
       for c in &self.columns {
         match c.r#type {
           ColumnType::TIMESTAMP => {
-            let nanoseconds = read_bytes!(i64, c.file, i);
+            let nanoseconds = read_bytes!(i64, c.data, i);
             let time: PrimitiveDateTime = date!(1970-01-01).midnight() + nanoseconds.nanoseconds();
 
             print!("{}", time.format("%Y-%m-%d %H:%M:%S.%N"));
           }
           ColumnType::CURRENCY => {
-            print!("{:>9}", format_currency(read_bytes!(f32, c.file, i), 7));
+            print!("{:>9}", format_currency(read_bytes!(f32, c.data, i), 7));
           }
           ColumnType::SYMBOL8 => {
-            let my = read_bytes!(u8, c.file, i);
+            let my = read_bytes!(u8, c.data, i);
             print!("{:7}", c.symbols[my as usize - 1]);
           }
           ColumnType::SYMBOL16 => {
-            let my = read_bytes!(u16, c.file, i);
+            let my = read_bytes!(u16, c.data, i);
             print!("{:7}", c.symbols[my as usize - 1]);
           }
           ColumnType::SYMBOL32 => {
-            let my = read_bytes!(u32, c.file, i);
+            let my = read_bytes!(u32, c.data, i);
             print!("{:7}", c.symbols[my as usize - 1]);
           }
           ColumnType::I32 => {
-            print!("{}", read_bytes!(i32, c.file, i));
+            print!("{}", read_bytes!(i32, c.data, i));
           }
           ColumnType::U32 => {
-            print!("{}", read_bytes!(u32, c.file, i));
+            print!("{}", read_bytes!(u32, c.data, i));
           }
           ColumnType::F32 => {
-            print!("{:.2}", read_bytes!(f32, c.file, i));
+            print!("{:.2}", read_bytes!(f32, c.data, i));
           }
           ColumnType::I64 => {
-            print!("{}", read_bytes!(i64, c.file, i));
+            print!("{}", read_bytes!(i64, c.data, i));
           }
           ColumnType::U64 => {
-            print!("{:>10}", read_bytes!(u64, c.file, i));
+            print!("{:>10}", read_bytes!(u64, c.data, i));
           }
           ColumnType::F64 => {
-            print!("{}", read_bytes!(f64, c.file, i));
+            print!("{}", read_bytes!(f64, c.data, i));
           }
         }
         print!(" ")

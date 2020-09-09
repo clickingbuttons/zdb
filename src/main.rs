@@ -32,7 +32,7 @@ fn main() {
     (1073077212356789012, "BKSH", 2567890.,    50.,  30.,    44.,     44., 5194967296u64)
   );
 
-  for _i in 0..5 {
+  for _i in 0..10000 {
     rows.push(generate_row());
   }
 
@@ -52,5 +52,5 @@ fn main() {
   agg1d.flush();
 
 
-  agg1d.read(0, 0);
+  // agg1d.read(0, 0);
 }

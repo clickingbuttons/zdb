@@ -1,6 +1,7 @@
 use crate::table::meta::write_meta;
 use crate::{schema::ColumnType, table::Table};
 use std::{io::Write, fs::OpenOptions};
+use memmap;
 
 impl Table {
   // TODO: Use const generics once stable.
@@ -8,7 +9,7 @@ impl Table {
   fn put_bytes(&mut self, bytes: &[u8]) {
     let size = bytes.len();
     let offset = self.row_index * size;
-    self.columns[self.column_index].file[offset..offset + size].copy_from_slice(bytes);
+    self.columns[self.column_index].data[offset..offset + size].copy_from_slice(bytes);
     self.column_index += 1;
   }
 
@@ -67,8 +68,8 @@ impl Table {
     self.column_index = 0;
     self.row_index += 1;
     // Check if next write will be larger than file
-    for c in &self.columns {
-      let size = c.file.len();
+    for c in &mut self.columns {
+      let size = c.data.len();
       let row_size: usize = match c.r#type {
         ColumnType::TIMESTAMP => 8,
         ColumnType::CURRENCY => 4,
@@ -84,6 +85,19 @@ impl Table {
       };
       if size <= row_size * self.row_index {
         println!("Need to grow column file {:?}", c);
+        let size = c.data.len() as u64;
+        // Unmap by dropping c.data
+        drop(&c.data);
+        // Grow file
+        c.file.set_len(size * 2)
+          .expect(&format!("Could not truncate {:?} to {}", c.file, size * 2));
+        // Remap file
+        unsafe {
+          c.data = memmap::MmapOptions::new()
+            .map_mut(&c.file)
+            .expect(&format!("Could not mmapp {:?}", c.file));
+        }
+        // Hope performance doesn't suck
         // https://man7.org/linux/man-pages/man2/mremap.2.html
         // https://devblogs.microsoft.com/oldnewthing/20150130-00/?p=44793
       }
@@ -91,7 +105,7 @@ impl Table {
   }
   pub fn flush(&mut self) {
     for column in &mut self.columns {
-      column.file.flush().expect(
+      column.data.flush().expect(
         &format!("Could not flush {:?}", column.path)
       );
       if column.symbols.len() > 0 {

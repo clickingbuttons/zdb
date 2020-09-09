@@ -4,7 +4,7 @@ use std::{
   path::PathBuf,
   fs::OpenOptions,
   io::{BufReader,BufRead,ErrorKind},
-};
+fs::File};
 
 pub fn get_data_path(name: &str) -> PathBuf {
   let mut path = PathBuf::from("data");
@@ -32,7 +32,7 @@ fn get_symbol_path(data_path: &PathBuf, column: &Column) -> PathBuf {
   path
 }
 
-fn get_column_file(path: &PathBuf, init: bool) -> MmapMut {
+fn get_column_data(path: &PathBuf, init: bool) -> (File, MmapMut) {
   let file = OpenOptions::new()
     .read(true)
     .write(true)
@@ -41,13 +41,16 @@ fn get_column_file(path: &PathBuf, init: bool) -> MmapMut {
     .expect(&format!("Unable to open file {:?}", path));
   if init {
     // Allocate 1MB per-column to start
-    file.set_len(1024)
-      .expect(&format!("Could not truncate {:?}", path));
+    let init_size = 1024;
+    file.set_len(init_size)
+      .expect(&format!("Could not truncate {:?} to {}", path, init_size));
   }
   unsafe {
-    memmap::MmapOptions::new()
+    let data = memmap::MmapOptions::new()
       .map_mut(&file)
-      .expect(&format!("Could not access data from mmapped {:?}", path))
+      .expect(&format!("Could not mmapp {:?}", path));
+
+    (file, data)
   }
 }
 
@@ -85,7 +88,8 @@ fn get_column_symbols(symbols_path: &PathBuf, column: &Column) -> Vec<String> {
 
 #[derive(Debug)]
 pub struct TableColumn {
-  pub file: memmap::MmapMut,
+  pub file: File,
+  pub data: memmap::MmapMut,
   pub path: PathBuf,
   pub symbols_path: PathBuf,
   pub symbols: Vec<String>,
@@ -97,8 +101,10 @@ pub fn get_columns(data_path: &PathBuf, columns: &Vec<Column>, init: bool) -> Ve
     .map(|column| {
       let path = get_col_path(&data_path, &column);
       let symbols_path = get_symbol_path(&data_path, &column);
+      let (file, data) = get_column_data(&path, init);
       TableColumn {
-        file: get_column_file(&path, init),
+        file,
+        data,
         symbols: get_column_symbols(&symbols_path, &column),
         symbols_path,
         path,
