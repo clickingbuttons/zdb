@@ -1,4 +1,5 @@
 use crate::schema::{Column,ColumnType};
+use crate::table::write::get_row_size;
 use memmap::MmapMut;
 use std::{
   path::PathBuf,
@@ -32,19 +33,17 @@ fn get_symbol_path(data_path: &PathBuf, column: &Column) -> PathBuf {
   path
 }
 
-fn get_column_data(path: &PathBuf, init: bool) -> (File, MmapMut) {
+fn get_column_data(path: &PathBuf, row_index: usize, column_type: ColumnType) -> (File, MmapMut) {
   let file = OpenOptions::new()
     .read(true)
     .write(true)
     .create(true)
     .open(&path)
     .expect(&format!("Unable to open file {:?}", path));
-  if init {
-    // Allocate 1MB per-column to start
-    let init_size = 1024;
-    file.set_len(init_size)
-      .expect(&format!("Could not truncate {:?} to {}", path, init_size));
-  }
+  // Allocate extra 1GB per column (expect some writes)
+  let init_size = row_index * get_row_size(column_type) + 1024 * 1024 * 1024;
+  file.set_len(init_size as u64)
+    .expect(&format!("Could not truncate {:?} to {}", path, init_size));
   unsafe {
     let data = memmap::MmapOptions::new()
       .map_mut(&file)
@@ -96,12 +95,12 @@ pub struct TableColumn {
   pub r#type: ColumnType
 }
 
-pub fn get_columns(data_path: &PathBuf, columns: &Vec<Column>, init: bool) -> Vec<TableColumn> {
+pub fn get_columns(data_path: &PathBuf, columns: &Vec<Column>, row_index: usize) -> Vec<TableColumn> {
   columns.iter()
     .map(|column| {
       let path = get_col_path(&data_path, &column);
       let symbols_path = get_symbol_path(&data_path, &column);
-      let (file, data) = get_column_data(&path, init);
+      let (file, data) = get_column_data(&path, row_index, column.r#type);
       TableColumn {
         file,
         data,

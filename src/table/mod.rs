@@ -35,11 +35,13 @@ impl Table {
       )));
     }
 
+    let row_index: usize = 0;
+
     let table = Table {
-      columns: get_columns(&data_path, &schema.columns, true),
+      columns: get_columns(&data_path, &schema.columns, row_index),
       schema,
       column_index: 0,
-      row_index: 0,
+      row_index,
       meta_path
     };
     write_meta(&table)?;
@@ -53,7 +55,7 @@ impl Table {
     let (schema, row_index) = read_meta(&meta_path, name);
 
     Ok(Table {
-      columns: get_columns(&data_path, &schema.columns, false),
+      columns: get_columns(&data_path, &schema.columns, row_index),
       schema,
       column_index: 0,
       row_index,

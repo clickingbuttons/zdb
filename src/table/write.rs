@@ -1,7 +1,39 @@
 use crate::table::meta::write_meta;
+use crate::table::util::TableColumn;
 use crate::{schema::ColumnType, table::Table};
 use std::{io::Write, fs::OpenOptions};
 use memmap;
+
+pub fn get_row_size(r#type: ColumnType) -> usize {
+  match r#type {
+    ColumnType::TIMESTAMP => 8,
+    ColumnType::CURRENCY => 4,
+    ColumnType::SYMBOL8 => 1,
+    ColumnType::SYMBOL16 => 2,
+    ColumnType::SYMBOL32 => 4,
+    ColumnType::I32 => 4,
+    ColumnType::U32 => 4,
+    ColumnType::F32 => 4,
+    ColumnType::I64 => 8,
+    ColumnType::U64 => 8,
+    ColumnType::F64 => 8,
+  }
+}
+
+fn write_symbols(column: &TableColumn) {
+  let symbols_text = column.symbols.join("\n");
+  let path = &column.symbols_path;
+
+  let mut f = OpenOptions::new()
+    .write(true)
+    .create(true)
+    .open(path)
+    .expect(&format!("Could not open symbols file {:?}", path));
+  f.write_all(symbols_text.as_bytes())
+    .expect(&format!("Could not write to symbols file {:?}", path));
+  f.flush()
+    .expect(&format!("Could not flush to symbols file {:?}", path));
+}
 
 impl Table {
   // TODO: Use const generics once stable.
@@ -70,36 +102,23 @@ impl Table {
     // Check if next write will be larger than file
     for c in &mut self.columns {
       let size = c.data.len();
-      let row_size: usize = match c.r#type {
-        ColumnType::TIMESTAMP => 8,
-        ColumnType::CURRENCY => 4,
-        ColumnType::SYMBOL8 => 1,
-        ColumnType::SYMBOL16 => 2,
-        ColumnType::SYMBOL32 => 4,
-        ColumnType::I32 => 4,
-        ColumnType::U32 => 4,
-        ColumnType::F32 => 4,
-        ColumnType::I64 => 8,
-        ColumnType::U64 => 8,
-        ColumnType::F64 => 8,
-      };
+      let row_size = get_row_size(c.r#type);
       if size <= row_size * self.row_index {
-        println!("Need to grow column file {:?}", c);
         let size = c.data.len() as u64;
+        println!("{} -> {}", size, size * 2);
         // Unmap by dropping c.data
         drop(&c.data);
         // Grow file
         c.file.set_len(size * 2)
           .expect(&format!("Could not truncate {:?} to {}", c.file, size * 2));
-        // Remap file
+        // Map file again
         unsafe {
           c.data = memmap::MmapOptions::new()
             .map_mut(&c.file)
             .expect(&format!("Could not mmapp {:?}", c.file));
         }
-        // Hope performance doesn't suck
+        // TODO: remove memmap dep and use mremap on *nix
         // https://man7.org/linux/man-pages/man2/mremap.2.html
-        // https://devblogs.microsoft.com/oldnewthing/20150130-00/?p=44793
       }
     }
   }
@@ -108,19 +127,13 @@ impl Table {
       column.data.flush().expect(
         &format!("Could not flush {:?}", column.path)
       );
+      let row_size = get_row_size(column.r#type);
+      // Leave a spot for the next insert
+      let size = row_size * (self.row_index + 1);
+      column.file.set_len(size as u64)
+        .expect(&format!("Could not truncate {:?} to {} to save {} bytes on disk", column.file, size, column.data.len() - size));
       if column.symbols.len() > 0 {
-        let symbols_text = column.symbols.join("\n");
-        let path = &column.symbols_path;
-
-        let mut f = OpenOptions::new()
-          .write(true)
-          .create(true)
-          .open(path)
-          .expect(&format!("Could not open symbols file {:?}", path));
-        f.write_all(symbols_text.as_bytes())
-          .expect(&format!("Could not write to symbols file {:?}", path));
-        f.flush()
-          .expect(&format!("Could not flush to symbols file {:?}", path));
+        write_symbols(&column);
       }
     }
     write_meta(&self)
