@@ -1,4 +1,4 @@
-mod util;
+mod columns;
 mod meta;
 mod write;
 mod read;
@@ -7,18 +7,36 @@ use crate::schema::*;
 // "meta" crate is reserved
 // https://internals.rust-lang.org/t/is-the-module-name-meta-forbidden/9587/3
 use crate::table::meta::*;
-use crate::table::util::*;
+use columns::*;
+use read::*;
 use std::{
-  fs::create_dir_all,
-  io::{Error,ErrorKind}, path::PathBuf,
+  fs::{create_dir_all},
+  io::{Error,ErrorKind},
+  path::PathBuf,
+  collections::HashMap
 };
+
+pub fn get_data_path(name: &str) -> PathBuf {
+  let mut path = PathBuf::from("data");
+  path.push(name);
+  path
+}
+
+pub fn get_meta_path(data_path: &PathBuf) -> PathBuf {
+  let mut path = data_path.clone();
+  path.push("_meta");
+  path
+}
 
 #[derive(Debug)]
 pub struct Table {
   schema: Schema,
+  partition_folder: String,
   columns: Vec<TableColumn>,
-  row_index: usize,
+  column_symbols: Vec<TableColumnSymbols>,
+  row_counts: HashMap<String, usize>,
   column_index: usize,
+  data_path: PathBuf,
   meta_path: PathBuf
 }
 
@@ -34,17 +52,19 @@ impl Table {
         "Table {name:?} already exists. Try Table::open({name:?}) instead", name=schema.name
       )));
     }
-
-    let row_index: usize = 0;
+    let column_symbols = read_column_symbols(&data_path, &schema);
 
     let table = Table {
-      columns: get_columns(&data_path, &schema.columns, row_index),
+      columns: Vec::new(),
+      column_symbols,
+      partition_folder: String::new(),
       schema,
       column_index: 0,
-      row_index,
+      row_counts: HashMap::new(),
+      data_path,
       meta_path
     };
-    write_meta(&table)?;
+    write_table_meta(&table)?;
 
     Ok(table)
   }
@@ -52,13 +72,17 @@ impl Table {
   pub fn open(name: &str) -> std::io::Result<Table> {
     let data_path = get_data_path(name);
     let meta_path = get_meta_path(&data_path);
-    let (schema, row_index) = read_meta(&meta_path, name);
+    let (schema, row_counts) = read_meta(&meta_path, name);
+    let column_symbols = read_column_symbols(&data_path, &schema);
 
     Ok(Table {
-      columns: get_columns(&data_path, &schema.columns, row_index),
+      columns: Vec::new(),
+      column_symbols,
+      partition_folder: String::new(),
       schema,
       column_index: 0,
-      row_index,
+      row_counts,
+      data_path,
       meta_path
     })
   }

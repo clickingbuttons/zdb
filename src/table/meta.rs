@@ -1,13 +1,14 @@
 use crate::schema::*;
 use crate::table::{Table};
-use std::path::PathBuf;
+use std::{iter::FromIterator, path::PathBuf};
 use std::fs::{File,OpenOptions};
 use std::io::{BufReader,BufRead,Write};
 use std::str::FromStr;
+use std::collections::HashMap;
 
-pub fn read_meta(meta_path: &PathBuf, name: &str) -> (Schema, usize) {
+pub fn read_meta(meta_path: &PathBuf, name: &str) -> (Schema, HashMap<String, usize>) {
   let mut schema = Schema::new(name);
-  let mut row_index = 0;
+  let mut row_counts = HashMap::new();
   let f = File::open(meta_path)
     .expect(&format!("Could not open meta file {:?}", meta_path));
   let f = BufReader::new(f);
@@ -28,27 +29,31 @@ pub fn read_meta(meta_path: &PathBuf, name: &str) -> (Schema, usize) {
         });
       }
       else if section == "partition_by" {
-        schema.partition_by = PartitionBy::from_str(&my_line).unwrap();
+        schema.partition_by = String::from(my_line);
       }
-      else if section == "row_index" {
-        row_index = my_line.parse::<usize>().expect(
-          &format!("Invalid row_index {}", my_line)
+      else if section == "row_counts" {
+        let mut split = my_line.split("/");
+        let name = String::from(split.next().unwrap());
+        let partition_row_count_str = split.next().unwrap();
+        let partition_row_count = partition_row_count_str.parse::<usize>().expect(
+          &format!("Invalid row_count {}", partition_row_count_str)
         );
+        row_counts.insert(name, partition_row_count);
       }
     }
   }
 
-  (schema, row_index)
+  (schema, row_counts)
 }
 
-pub fn write_meta(table: &Table) -> std::io::Result<()> {
+pub fn write_table_meta(table: &Table) -> std::io::Result<()> {
   let meta_path = &table.meta_path;
   let mut f = OpenOptions::new()
     .write(true)
     .create(true)
     .open(&table.meta_path)
     .expect(&format!("Could not open meta file {:?}", meta_path));
-  
+
   let mut meta_text = String::from("[columns]\n");
   meta_text += &table.schema.columns.iter()
     .skip(1)
@@ -56,9 +61,13 @@ pub fn write_meta(table: &Table) -> std::io::Result<()> {
     .collect::<Vec<_>>()
     .join("\n");
   meta_text += "\n\n[partition_by]\n";
-  meta_text += &format!("{:?}", &table.schema.partition_by);
-  meta_text += "\n\n[row_index]\n";
-  meta_text += &format!("{:?}", &table.row_index);
+  meta_text += &table.schema.partition_by;
+  meta_text += "\n\n[row_counts]\n";
+  let mut partitions = Vec::from_iter(table.row_counts.keys().cloned());
+  partitions.sort();
+  for partition in partitions {
+    meta_text += &format!("{}/{}\n", &partition, &table.row_counts.get(&partition).unwrap());
+  }
 
   f.write_all(meta_text.as_bytes())
     .expect(&format!("Could not write to meta file {:?}", meta_path));

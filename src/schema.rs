@@ -52,34 +52,10 @@ impl Column {
   }
 }
 
-#[derive(Debug)]
-pub enum PartitionBy {
-  NONE,
-  DAY,
-  WEEK,
-  MONTH,
-  YEAR
-}
-
-impl FromStr for PartitionBy {
-  type Err = ();
-
-  fn from_str(input: &str) -> Result<PartitionBy, Self::Err> {
-    match input {
-      "NONE" => Ok(PartitionBy::NONE),
-      "DAY" => Ok(PartitionBy::DAY),
-      "WEEK" => Ok(PartitionBy::WEEK),
-      "MONTH" => Ok(PartitionBy::MONTH),
-      "YEAR" => Ok(PartitionBy::YEAR),
-      _      => Err(()),
-    }
-  }
-}
-
 pub struct Schema {
   pub name: String,
   pub columns: Vec<Column>,
-  pub partition_by: PartitionBy
+  pub partition_by: String
 }
 
 impl fmt::Debug for Schema {
@@ -100,7 +76,7 @@ impl<'a> Schema {
     Schema {
       name: name.to_owned(),
       columns: vec!(Column::new("ts", ColumnType::TIMESTAMP)),
-      partition_by: PartitionBy::NONE
+      partition_by: String::new()
     }
   }
 
@@ -114,8 +90,8 @@ impl<'a> Schema {
     self
   }
 
-  pub fn partition_by(mut self, partition_by: PartitionBy) -> Self {
-    self.partition_by = partition_by;
+  pub fn partition_by(mut self, partition_by: &'a str) -> Self {
+    self.partition_by = partition_by.to_owned();
     self
   }
 }
