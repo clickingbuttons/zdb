@@ -1,36 +1,37 @@
-use crate::{schema::ColumnType, schema::Schema, table::Table};
-use std::{path::PathBuf};
-use std::{
-  convert::TryInto,
-  mem::size_of,
-  cmp::max,
+use crate::{
+  schema::{ColumnType, Schema},
+  table::Table
 };
-use time::{NumericalDuration,PrimitiveDateTime,date};
-use std::iter::FromIterator;
+use std::{cmp::max, convert::TryInto, iter::FromIterator, mem::size_of, path::PathBuf};
+use time::{date, NumericalDuration, PrimitiveDateTime};
 
-use super::columns::{TableColumnSymbols, get_column_symbols, get_symbols_path};
+use super::columns::{get_column_symbols, get_symbols_path, TableColumnSymbols};
 
 macro_rules! read_bytes {
   ($_type:ty, $bytes:expr, $i:expr) => {{
     let size = size_of::<$_type>();
     <$_type>::from_le_bytes($bytes[$i * size..$i * size + size].try_into().unwrap())
-  }}
+  }};
 }
 
 fn format_currency(dollars: f32, sig_figs: usize) -> String {
   let mut res = String::with_capacity(sig_figs + 4);
 
   if dollars as i32 >= i32::pow(10, sig_figs as u32) {
-    res += &format!("{:.width$e}", dollars, width=sig_figs - 4);
-  }
-  else {
+    res += &format!("{:.width$e}", dollars, width = sig_figs - 4);
+  } else {
     let mut num_digits = 0;
     let mut tmp_dollars = dollars;
     while tmp_dollars > 1. {
       tmp_dollars /= 10.;
       num_digits += 1;
     }
-    res += &format!("{:<width1$.width2$}", dollars, width1=num_digits, width2=max(sig_figs - num_digits, 1));
+    res += &format!(
+      "{:<width1$.width2$}",
+      dollars,
+      width1 = num_digits,
+      width2 = max(sig_figs - num_digits, 1)
+    );
   }
 
   String::from(res.trim_end_matches('0').trim_end_matches('.'))
@@ -51,8 +52,9 @@ impl Table {
           match c.r#type {
             ColumnType::TIMESTAMP => {
               let nanoseconds = read_bytes!(i64, c.data, i);
-              let time: PrimitiveDateTime = date!(1970-01-01).midnight() + nanoseconds.nanoseconds();
-  
+              let time: PrimitiveDateTime =
+                date!(1970 - 01 - 01).midnight() + nanoseconds.nanoseconds();
+
               print!("{}", time.format("%Y-%m-%d %H:%M:%S.%N"));
             }
             ColumnType::CURRENCY => {
@@ -67,13 +69,13 @@ impl Table {
             ColumnType::SYMBOL16 => {
               let symbol_index = read_bytes!(u16, c.data, i);
               let symbols = &self.column_symbols[j].symbols;
-              
+
               print!("{:7}", symbols[symbol_index as usize - 1]);
             }
             ColumnType::SYMBOL32 => {
               let symbol_index = read_bytes!(u32, c.data, i);
               let symbols = &self.column_symbols[j].symbols;
-              
+
               print!("{:7}", symbols[symbol_index as usize - 1]);
             }
             ColumnType::I32 => {
@@ -110,7 +112,7 @@ pub fn read_column_symbols(data_path: &PathBuf, schema: &Schema) -> Vec<TableCol
     let path = get_symbols_path(&data_path, &column);
     let col_syms = TableColumnSymbols {
       symbols: get_column_symbols(&path, &column),
-      path,
+      path
     };
     res.push(col_syms);
   }

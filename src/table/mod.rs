@@ -1,7 +1,7 @@
 mod columns;
 mod meta;
-mod write;
 mod read;
+mod write;
 
 use crate::schema::*;
 // "meta" crate is reserved
@@ -10,10 +10,10 @@ use crate::table::meta::*;
 use columns::*;
 use read::*;
 use std::{
-  fs::{create_dir_all},
-  io::{Error,ErrorKind},
-  path::PathBuf,
-  collections::HashMap
+  collections::HashMap,
+  fs::create_dir_all,
+  io::{Error, ErrorKind},
+  path::PathBuf
 };
 
 pub fn get_data_path(name: &str) -> PathBuf {
@@ -43,14 +43,17 @@ pub struct Table {
 impl Table {
   pub fn create(schema: Schema) -> std::io::Result<Table> {
     let data_path = get_data_path(&schema.name);
-    create_dir_all(&data_path)
-      .expect(&format!("Cannot create dir {:?}", data_path));
+    create_dir_all(&data_path).expect(&format!("Cannot create dir {:?}", data_path));
     let meta_path = get_meta_path(&data_path);
 
     if meta_path.exists() {
-      return Err(Error::new(ErrorKind::Other, format!(
-        "Table {name:?} already exists. Try Table::open({name:?}) instead", name=schema.name
-      )));
+      return Err(Error::new(
+        ErrorKind::Other,
+        format!(
+          "Table {name:?} already exists. Try Table::open({name:?}) instead",
+          name = schema.name
+        )
+      ));
     }
     let column_symbols = read_column_symbols(&data_path, &schema);
 

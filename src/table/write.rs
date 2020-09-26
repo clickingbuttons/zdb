@@ -1,11 +1,13 @@
-use crate::table::meta::write_table_meta;
-use crate::{schema::ColumnType, table::Table};
-use std::{
-  io::Write,
-  fs::{OpenOptions,create_dir_all}
+use crate::{
+  schema::ColumnType,
+  table::{meta::write_table_meta, Table}
 };
-use time::{NumericalDuration,PrimitiveDateTime,date};
 use memmap;
+use std::{
+  fs::{create_dir_all, OpenOptions},
+  io::Write
+};
+use time::{date, NumericalDuration, PrimitiveDateTime};
 
 pub fn get_row_size(r#type: ColumnType) -> usize {
   match r#type {
@@ -19,7 +21,7 @@ pub fn get_row_size(r#type: ColumnType) -> usize {
     ColumnType::F32 => 4,
     ColumnType::I64 => 8,
     ColumnType::U64 => 8,
-    ColumnType::F64 => 8,
+    ColumnType::F64 => 8
   }
 }
 
@@ -35,13 +37,15 @@ impl Table {
   }
 
   fn get_partition_folder(&self, val: i64) -> String {
-    let time: PrimitiveDateTime = date!(1970-01-01).midnight() + val.nanoseconds();
+    let time: PrimitiveDateTime = date!(1970 - 01 - 01).midnight() + val.nanoseconds();
 
     time.format(&self.schema.partition_by)
   }
 
   pub fn get_row_count(&self) -> usize {
-    self.row_counts.get(&self.partition_folder)
+    self
+      .row_counts
+      .get(&self.partition_folder)
       .expect(&format!("No row count for {}", &self.partition_folder))
       .clone()
   }
@@ -53,8 +57,7 @@ impl Table {
         self.partition_folder = partition_folder;
         let mut data_path = self.data_path.clone();
         data_path.push(&self.partition_folder);
-        create_dir_all(&data_path)
-          .expect(&format!("Cannot create dir {:?}", &data_path));
+        create_dir_all(&data_path).expect(&format!("Cannot create dir {:?}", &data_path));
         self.columns = self.get_columns(&data_path, 0);
       }
     }
@@ -65,7 +68,7 @@ impl Table {
   }
   pub fn put_symbol(&mut self, val: &str) {
     let symbols = &mut self.column_symbols[self.column_index].symbols;
-    let index = symbols.iter().position(|s| s == val); 
+    let index = symbols.iter().position(|s| s == val);
     let index = match index {
       Some(i) => i + 1,
       None => {
@@ -77,13 +80,13 @@ impl Table {
     match column.r#type {
       ColumnType::SYMBOL8 => {
         self.put_bytes(&(index as u8).to_le_bytes());
-      },
+      }
       ColumnType::SYMBOL16 => {
         self.put_bytes(&(index as u16).to_le_bytes());
-      },
+      }
       ColumnType::SYMBOL32 => {
         self.put_bytes(&(index as u32).to_le_bytes());
-      },
+      }
       _ => {
         panic!(format!("Unsupported column type {:?}", column.r#type));
       }
@@ -133,7 +136,9 @@ impl Table {
       Some(n) => *n,
       None => 0
     };
-    self.row_counts.insert(self.partition_folder.clone(), row_count + 1);
+    self
+      .row_counts
+      .insert(self.partition_folder.clone(), row_count + 1);
     // Check if next write will be larger than file
     for c in &mut self.columns {
       let size = c.data.len();
@@ -144,8 +149,11 @@ impl Table {
         // Unmap by dropping c.data
         drop(&c.data);
         // Grow file
-        c.file.set_len(size * 2)
-          .expect(&format!("Could not truncate {:?} to {}", c.file, size * 2));
+        c.file.set_len(size * 2).expect(&format!(
+          "Could not truncate {:?} to {}",
+          c.file,
+          size * 2
+        ));
         // Map file again
         unsafe {
           c.data = memmap::MmapOptions::new()
@@ -160,17 +168,21 @@ impl Table {
   pub fn flush(&mut self) {
     let row_count = self.get_row_count();
     for column in &mut self.columns {
-      column.data.flush().expect(
-        &format!("Could not flush {:?}", column.path)
-      );
+      column
+        .data
+        .flush()
+        .expect(&format!("Could not flush {:?}", column.path));
       let row_size = get_row_size(column.r#type);
       // Leave a spot for the next insert
       let size = row_size * (row_count + 1);
-      column.file.set_len(size as u64)
-        .expect(&format!("Could not truncate {:?} to {} to save {} bytes on disk", column.file, size, column.data.len() - size));
+      column.file.set_len(size as u64).expect(&format!(
+        "Could not truncate {:?} to {} to save {} bytes on disk",
+        column.file,
+        size,
+        column.data.len() - size
+      ));
     }
     self.write_symbols();
-    write_table_meta(&self)
-      .expect("Could not write meta file with row_count");
+    write_table_meta(&self).expect("Could not write meta file with row_count");
   }
 }

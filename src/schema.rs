@@ -1,11 +1,10 @@
-use std::fmt;
-use std::str::FromStr;
+use std::{fmt, str::FromStr};
 
 #[derive(Debug, Copy, Clone)]
 pub enum ColumnType {
   TIMESTAMP,
   CURRENCY,
-  SYMBOL8, // 256 symbols
+  SYMBOL8,  // 256 symbols
   SYMBOL16, // 65536 symbols
   SYMBOL32, // 4294967296 symbols
   I32,
@@ -32,7 +31,7 @@ impl FromStr for ColumnType {
       "U64" => Ok(ColumnType::U64),
       "F32" => Ok(ColumnType::F32),
       "F64" => Ok(ColumnType::F64),
-      _      => Err(()),
+      _ => Err(())
     }
   }
 }
@@ -60,10 +59,14 @@ pub struct Schema {
 
 impl fmt::Debug for Schema {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "Schema {} {}:\n  {}",
+    write!(
+      f,
+      "Schema {} {}:\n  {}",
       self.name,
       format!("{:?}", self.partition_by),
-      self.columns.iter()
+      self
+        .columns
+        .iter()
         .map(|c| format!("({}, {:?})", c.name, c.r#type))
         .collect::<Vec<_>>()
         .join("\n  ")
@@ -75,7 +78,7 @@ impl<'a> Schema {
   pub fn new(name: &'a str) -> Schema {
     Schema {
       name: name.to_owned(),
-      columns: vec!(Column::new("ts", ColumnType::TIMESTAMP)),
+      columns: vec![Column::new("ts", ColumnType::TIMESTAMP)],
       partition_by: String::new()
     }
   }

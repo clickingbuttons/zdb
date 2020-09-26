@@ -1,25 +1,27 @@
-use crate::schema::*;
-use crate::table::{Table};
-use std::{iter::FromIterator, path::PathBuf};
-use std::fs::{File,OpenOptions};
-use std::io::{BufReader,BufRead,Write};
-use std::str::FromStr;
-use std::collections::HashMap;
+use crate::{schema::*, table::Table};
+use std::{
+  collections::HashMap,
+  fs::{File, OpenOptions},
+  io::{BufRead, BufReader, Write},
+  iter::FromIterator,
+  path::PathBuf,
+  str::FromStr
+};
 
 pub fn read_meta(meta_path: &PathBuf, name: &str) -> (Schema, HashMap<String, usize>) {
   let mut schema = Schema::new(name);
   let mut row_counts = HashMap::new();
-  let f = File::open(meta_path)
-    .expect(&format!("Could not open meta file {:?}", meta_path));
+  let f = File::open(meta_path).expect(&format!("Could not open meta file {:?}", meta_path));
   let f = BufReader::new(f);
   let mut section = String::new();
   for line in f.lines() {
-    let my_line = line
-      .expect(&format!("Could not read line from meta file {:?}", meta_path));
+    let my_line = line.expect(&format!(
+      "Could not read line from meta file {:?}",
+      meta_path
+    ));
     if my_line.starts_with("[") {
-      section = my_line[1..my_line.len() -1].to_string();
-    }
-    else if !my_line.starts_with("#") && my_line != "" {
+      section = my_line[1..my_line.len() - 1].to_string();
+    } else if !my_line.starts_with("#") && my_line != "" {
       if section == "columns" {
         let mut split = my_line.split(", ");
         let name = String::from(split.next().unwrap());
@@ -27,17 +29,15 @@ pub fn read_meta(meta_path: &PathBuf, name: &str) -> (Schema, HashMap<String, us
           name,
           r#type: ColumnType::from_str(split.next().unwrap()).unwrap()
         });
-      }
-      else if section == "partition_by" {
+      } else if section == "partition_by" {
         schema.partition_by = String::from(my_line);
-      }
-      else if section == "row_counts" {
+      } else if section == "row_counts" {
         let mut split = my_line.split("/");
         let name = String::from(split.next().unwrap());
         let partition_row_count_str = split.next().unwrap();
-        let partition_row_count = partition_row_count_str.parse::<usize>().expect(
-          &format!("Invalid row_count {}", partition_row_count_str)
-        );
+        let partition_row_count = partition_row_count_str
+          .parse::<usize>()
+          .expect(&format!("Invalid row_count {}", partition_row_count_str));
         row_counts.insert(name, partition_row_count);
       }
     }
@@ -55,7 +55,10 @@ pub fn write_table_meta(table: &Table) -> std::io::Result<()> {
     .expect(&format!("Could not open meta file {:?}", meta_path));
 
   let mut meta_text = String::from("[columns]\n");
-  meta_text += &table.schema.columns.iter()
+  meta_text += &table
+    .schema
+    .columns
+    .iter()
     .skip(1)
     .map(|c| format!("{}, {:?}", c.name, c.r#type))
     .collect::<Vec<_>>()
@@ -66,7 +69,11 @@ pub fn write_table_meta(table: &Table) -> std::io::Result<()> {
   let mut partitions = Vec::from_iter(table.row_counts.keys().cloned());
   partitions.sort();
   for partition in partitions {
-    meta_text += &format!("{}/{}\n", &partition, &table.row_counts.get(&partition).unwrap());
+    meta_text += &format!(
+      "{}/{}\n",
+      &partition,
+      &table.row_counts.get(&partition).unwrap()
+    );
   }
 
   f.write_all(meta_text.as_bytes())

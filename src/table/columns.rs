@@ -1,7 +1,13 @@
-use crate::schema::{Column, ColumnType};
-use crate::table::write::get_row_size;
+use crate::{
+  schema::{Column, ColumnType},
+  table::write::get_row_size
+};
 use memmap::MmapMut;
-use std::{fs::File, fs::OpenOptions, io::{BufReader,BufRead,ErrorKind}, path::PathBuf};
+use std::{
+  fs::{File, OpenOptions},
+  io::{BufRead, BufReader, ErrorKind},
+  path::PathBuf
+};
 
 use super::Table;
 
@@ -43,7 +49,8 @@ fn get_column_data(path: &PathBuf, row_count: usize, column_type: ColumnType) ->
     .expect(&format!("Unable to open file {:?}", path));
   // Allocate extra 1GB per column (expect some writes)
   let init_size = row_count * get_row_size(column_type) + 1024 * 1024 * 1024;
-  file.set_len(init_size as u64)
+  file
+    .set_len(init_size as u64)
     .expect(&format!("Could not truncate {:?} to {}", path, init_size));
   unsafe {
     let data = memmap::MmapOptions::new()
@@ -65,21 +72,24 @@ pub fn get_column_symbols(symbols_path: &PathBuf, column: &Column) -> Vec<String
     return Vec::new();
   }
   let mut symbols = Vec::<String>::with_capacity(capacity);
-  let file = OpenOptions::new()
-    .read(true)
-    .open(&symbols_path);
+  let file = OpenOptions::new().read(true).open(&symbols_path);
   match file {
     Ok(file) => {
       let f = BufReader::new(&file);
       for line in f.lines() {
-        let my_line = line
-          .expect(&format!("Could not read line from symbol file {:?}", symbols_path));
+        let my_line = line.expect(&format!(
+          "Could not read line from symbol file {:?}",
+          symbols_path
+        ));
         symbols.push(my_line);
       }
-    },
+    }
     Err(error) => {
       if error.kind() != ErrorKind::NotFound {
-        panic!("Problem opening symbol file {:?}: {:?}", symbols_path, error)
+        panic!(
+          "Problem opening symbol file {:?}: {:?}",
+          symbols_path, error
+        )
       }
     }
   };
@@ -89,7 +99,10 @@ pub fn get_column_symbols(symbols_path: &PathBuf, column: &Column) -> Vec<String
 
 impl Table {
   pub fn get_columns(&self, data_path: &PathBuf, row_count: usize) -> Vec<TableColumn> {
-    self.schema.columns.iter()
+    self
+      .schema
+      .columns
+      .iter()
       .map(|column| {
         let path = get_col_path(&data_path, &column);
         let (file, data) = get_column_data(&path, row_count, column.r#type);
@@ -101,6 +114,6 @@ impl Table {
           r#type: column.r#type.clone()
         }
       })
-      .collect::<Vec::<_>>()
+      .collect::<Vec<_>>()
   }
 }
