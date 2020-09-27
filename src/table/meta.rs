@@ -8,6 +8,12 @@ use std::{
   str::FromStr
 };
 
+pub fn get_meta_path(data_path: &PathBuf) -> PathBuf {
+  let mut path = data_path.clone();
+  path.push("_meta");
+  path
+}
+
 pub fn read_meta(meta_path: &PathBuf, name: &str) -> (Schema, HashMap<String, usize>) {
   let mut schema = Schema::new(name);
   let mut row_counts = HashMap::new();
@@ -46,7 +52,7 @@ pub fn read_meta(meta_path: &PathBuf, name: &str) -> (Schema, HashMap<String, us
   (schema, row_counts)
 }
 
-pub fn write_table_meta(table: &Table) -> std::io::Result<()> {
+pub fn write_meta(table: &Table) -> std::io::Result<()> {
   let meta_path = &table.meta_path;
   let mut f = OpenOptions::new()
     .write(true)

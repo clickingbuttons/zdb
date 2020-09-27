@@ -1,6 +1,6 @@
 use crate::{
   schema::ColumnType,
-  table::{meta::write_table_meta, Table}
+  table::{meta::write_meta, Table}
 };
 use memmap;
 use std::{
@@ -58,7 +58,7 @@ impl Table {
         let mut data_path = self.data_path.clone();
         data_path.push(&self.partition_folder);
         create_dir_all(&data_path).expect(&format!("Cannot create dir {:?}", &data_path));
-        self.columns = self.get_columns(&data_path, 0);
+        self.columns = self.open_columns(&data_path, 0);
       }
     }
     self.put_i64(val);
@@ -183,6 +183,6 @@ impl Table {
       ));
     }
     self.write_symbols();
-    write_table_meta(&self).expect("Could not write meta file with row_count");
+    write_meta(&self).expect("Could not write meta file with row_count");
   }
 }

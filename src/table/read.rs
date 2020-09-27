@@ -1,11 +1,18 @@
 use crate::{
-  schema::{ColumnType, Schema},
-  table::Table
+  schema::{Column, ColumnType, Schema},
+  table::{columns::TableColumnSymbols,Table}
 };
-use std::{cmp::max, convert::TryInto, iter::FromIterator, mem::size_of, path::PathBuf};
+use std::{
+  cmp::max,
+  convert::TryInto,
+  fs::OpenOptions,
+  io::{BufRead, BufReader, ErrorKind},
+  iter::FromIterator,
+  mem::size_of,
+  path::PathBuf
+};
 use time::{date, NumericalDuration, PrimitiveDateTime};
 
-use super::columns::{get_column_symbols, get_symbols_path, TableColumnSymbols};
 
 macro_rules! read_bytes {
   ($_type:ty, $bytes:expr, $i:expr) => {{
@@ -45,7 +52,7 @@ impl Table {
       self.partition_folder = partition;
       let mut partition_path = PathBuf::from(&self.data_path);
       partition_path.push(&self.partition_folder);
-      let columns = self.get_columns(&partition_path, 0);
+      let columns = self.open_columns(&partition_path, 0);
       let row_count = self.get_row_count();
       for i in 0..row_count {
         for (j, c) in columns.iter().enumerate() {
@@ -103,6 +110,49 @@ impl Table {
       }
     }
   }
+}
+
+fn get_symbols_path(data_path: &PathBuf, column: &Column) -> PathBuf {
+  let mut path = data_path.clone();
+  path.push(&column.name);
+  path.set_extension("symbols");
+  path
+}
+
+fn get_column_symbols(symbols_path: &PathBuf, column: &Column) -> Vec<String> {
+  let capacity = match column.r#type {
+    ColumnType::SYMBOL8 => 2 << 7,
+    ColumnType::SYMBOL16 => 2 << 15,
+    ColumnType::SYMBOL32 => 2 << 31,
+    _ => 0
+  };
+  if capacity == 0 {
+    return Vec::new();
+  }
+  let mut symbols = Vec::<String>::with_capacity(capacity);
+  let file = OpenOptions::new().read(true).open(&symbols_path);
+  match file {
+    Ok(file) => {
+      let f = BufReader::new(&file);
+      for line in f.lines() {
+        let my_line = line.expect(&format!(
+          "Could not read line from symbol file {:?}",
+          symbols_path
+        ));
+        symbols.push(my_line);
+      }
+    }
+    Err(error) => {
+      if error.kind() != ErrorKind::NotFound {
+        panic!(
+          "Problem opening symbol file {:?}: {:?}",
+          symbols_path, error
+        )
+      }
+    }
+  };
+
+  symbols
 }
 
 pub fn read_column_symbols(data_path: &PathBuf, schema: &Schema) -> Vec<TableColumnSymbols> {

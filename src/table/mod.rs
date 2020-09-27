@@ -22,12 +22,6 @@ pub fn get_data_path(name: &str) -> PathBuf {
   path
 }
 
-pub fn get_meta_path(data_path: &PathBuf) -> PathBuf {
-  let mut path = data_path.clone();
-  path.push("_meta");
-  path
-}
-
 #[derive(Debug)]
 pub struct Table {
   schema: Schema,
@@ -67,7 +61,7 @@ impl Table {
       data_path,
       meta_path
     };
-    write_table_meta(&table)?;
+    write_meta(&table)?;
 
     Ok(table)
   }
