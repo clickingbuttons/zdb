@@ -1,11 +1,12 @@
 use crate::{
   schema::{Column, ColumnType, Schema},
-  table::{columns::TableColumnSymbols, Table}
+  table::{Table, TableColumn, TableColumnSymbols}
 };
+use memmap::MmapMut;
 use std::{
   cmp::max,
   convert::TryInto,
-  fs::OpenOptions,
+  fs::{File, OpenOptions},
   io::{BufRead, BufReader, ErrorKind},
   iter::FromIterator,
   mem::size_of,
@@ -44,6 +45,25 @@ fn format_currency(dollars: f32, sig_figs: usize) -> String {
 }
 
 impl Table {
+  pub fn read_columns(&self, partition_path: &PathBuf, row_count: usize) -> Vec<TableColumn> {
+    self
+      .schema
+      .columns
+      .iter()
+      .map(|column| {
+        let path = get_col_path(&partition_path, &column);
+        let (file, data) = get_column_data(&path, row_count, column.r#type);
+        TableColumn {
+          name: column.name.clone(),
+          file,
+          data,
+          path,
+          r#type: column.r#type.clone()
+        }
+      })
+      .collect::<Vec<_>>()
+  }
+
   pub fn read(&mut self, _from_ts: i64, _to_ts: i64) {
     let mut partitions = Vec::from_iter(self.row_counts.keys().cloned());
     partitions.sort();
@@ -51,7 +71,7 @@ impl Table {
       self.data_folder = partition;
       let mut partition_path = PathBuf::from(&self.data_path);
       partition_path.push(&self.data_folder);
-      let columns = self.open_columns(&partition_path, 0);
+      let columns = self.read_columns(&partition_path, 0);
       let row_count = self.get_row_count();
       for i in 0..row_count {
         for (j, c) in columns.iter().enumerate() {
@@ -171,4 +191,32 @@ pub fn read_column_symbols(data_path: &PathBuf, schema: &Schema) -> Vec<TableCol
   }
 
   res
+}
+
+fn get_col_path(data_path: &PathBuf, column: &Column) -> PathBuf {
+  let mut path = data_path.clone();
+  path.push(&column.name);
+  path.set_extension(String::from(format!("{:?}", column.r#type).to_lowercase()));
+  path
+}
+
+fn get_column_data(path: &PathBuf, row_count: usize, column_type: ColumnType) -> (File, MmapMut) {
+  let file = OpenOptions::new()
+    .read(true)
+    .write(true)
+    .create(true)
+    .open(&path)
+    .expect(&format!("Unable to open file {:?}", path));
+  // Allocate extra 1GB per column (expect some writes)
+  let init_size = row_count * Table::get_row_size(column_type) + 1024 * 1024 * 1024;
+  file
+    .set_len(init_size as u64)
+    .expect(&format!("Could not truncate {:?} to {}", path, init_size));
+  unsafe {
+    let data = memmap::MmapOptions::new()
+      .map_mut(&file)
+      .expect(&format!("Could not mmapp {:?}", path));
+
+    (file, data)
+  }
 }

@@ -1,29 +1,10 @@
 use crate::{
   schema::ColumnType,
-  table::{meta::write_meta, Table}
+  table::Table
 };
 use memmap;
-use std::{
-  fs::{create_dir_all, OpenOptions},
-  io::Write
-};
+use std::{fs::{create_dir_all, OpenOptions}, io::Write, iter::FromIterator};
 use time::{date, NumericalDuration, PrimitiveDateTime};
-
-pub fn get_row_size(r#type: ColumnType) -> usize {
-  match r#type {
-    ColumnType::TIMESTAMP => 8,
-    ColumnType::CURRENCY => 4,
-    ColumnType::SYMBOL8 => 1,
-    ColumnType::SYMBOL16 => 2,
-    ColumnType::SYMBOL32 => 4,
-    ColumnType::I32 => 4,
-    ColumnType::U32 => 4,
-    ColumnType::F32 => 4,
-    ColumnType::I64 => 8,
-    ColumnType::U64 => 8,
-    ColumnType::F64 => 8
-  }
-}
 
 impl Table {
   // TODO: Use const generics once stable.
@@ -58,7 +39,7 @@ impl Table {
         let mut data_path = self.data_path.clone();
         data_path.push(&self.data_folder);
         create_dir_all(&data_path).expect(&format!("Cannot create dir {:?}", &data_path));
-        self.columns = self.open_columns(&data_path, 0);
+        self.columns = self.read_columns(&data_path, 0);
       }
     }
     self.put_i64(val);
@@ -137,7 +118,7 @@ impl Table {
     // Check if next write will be larger than file
     for c in &mut self.columns {
       let size = c.data.len();
-      let row_size = get_row_size(c.r#type);
+      let row_size = Table::get_row_size(c.r#type);
       if size <= row_size * row_count {
         let size = c.data.len() as u64;
         println!("{} -> {}", size, size * 2);
@@ -161,6 +142,42 @@ impl Table {
     }
   }
 
+  pub fn write_meta(&self) -> std::io::Result<()> {
+    let mut f = OpenOptions::new()
+      .write(true)
+      .create(true)
+      .open(&self.meta_path)
+      .expect(&format!("Could not open meta file {:?}", &self.meta_path));
+  
+    let mut meta_text = String::from("[columns]\n");
+    meta_text += &self
+      .schema
+      .columns
+      .iter()
+      .skip(1)
+      .map(|c| format!("{}, {:?}", c.name, c.r#type))
+      .collect::<Vec<_>>()
+      .join("\n");
+    meta_text += "\n\n[partition_by]\n";
+    meta_text += &self.schema.partition_by;
+    meta_text += "\n\n[row_counts]\n";
+    let mut partitions = Vec::from_iter(self.row_counts.keys().cloned());
+    partitions.sort();
+    for partition in partitions {
+      meta_text += &format!(
+        "{}/{}\n",
+        &partition,
+        &self.row_counts.get(&partition).unwrap()
+      );
+    }
+  
+    f.write_all(meta_text.as_bytes())
+      .expect(&format!("Could not write to meta file {:?}", &self.meta_path));
+    f.flush()
+      .expect(&format!("Could not flush to meta file {:?}", &self.meta_path));
+    Ok(())
+  }
+
   pub fn flush(&mut self) {
     let row_count = self.get_row_count();
     for column in &mut self.columns {
@@ -168,7 +185,7 @@ impl Table {
         .data
         .flush()
         .expect(&format!("Could not flush {:?}", column.path));
-      let row_size = get_row_size(column.r#type);
+      let row_size = Table::get_row_size(column.r#type);
       // Leave a spot for the next insert
       let size = row_size * (row_count + 1);
       column.file.set_len(size as u64).expect(&format!(
@@ -179,6 +196,6 @@ impl Table {
       ));
     }
     self.write_symbols();
-    write_meta(&self).expect("Could not write meta file with row_count");
+    self.write_meta().expect("Could not write meta file with row_count");
   }
 }
