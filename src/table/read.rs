@@ -48,9 +48,9 @@ impl Table {
     let mut partitions = Vec::from_iter(self.row_counts.keys().cloned());
     partitions.sort();
     for partition in partitions {
-      self.partition_folder = partition;
+      self.data_folder = partition;
       let mut partition_path = PathBuf::from(&self.data_path);
-      partition_path.push(&self.partition_folder);
+      partition_path.push(&self.data_folder);
       let columns = self.open_columns(&partition_path, 0);
       let row_count = self.get_row_count();
       for i in 0..row_count {
@@ -111,20 +111,24 @@ impl Table {
   }
 }
 
-fn get_symbols_path(data_path: &PathBuf, column: &Column) -> PathBuf {
+pub fn get_symbols_path(data_path: &PathBuf, column: &Column) -> PathBuf {
   let mut path = data_path.clone();
   path.push(&column.name);
   path.set_extension("symbols");
   path
 }
 
-fn get_column_symbols(symbols_path: &PathBuf, column: &Column) -> Vec<String> {
-  let capacity = match column.r#type {
+pub fn get_capacity(column: &Column) -> usize {
+  match column.r#type {
     ColumnType::SYMBOL8 => 2 << 7,
     ColumnType::SYMBOL16 => 2 << 15,
     ColumnType::SYMBOL32 => 2 << 31,
     _ => 0
-  };
+  }
+}
+
+fn get_column_symbols(symbols_path: &PathBuf, column: &Column) -> Vec<String> {
+  let capacity = get_capacity(&column);
   if capacity == 0 {
     return Vec::new();
   }

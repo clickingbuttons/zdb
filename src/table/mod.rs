@@ -24,14 +24,14 @@ pub fn get_data_path(name: &str) -> PathBuf {
 
 #[derive(Debug)]
 pub struct Table {
-  schema:           Schema,
-  partition_folder: String,
-  columns:          Vec<TableColumn>,
-  column_symbols:   Vec<TableColumnSymbols>,
-  row_counts:       HashMap<String, usize>,
-  column_index:     usize,
-  data_path:        PathBuf,
-  meta_path:        PathBuf
+  schema:         Schema,
+  data_folder:    String,
+  columns:        Vec<TableColumn>,
+  column_symbols: Vec<TableColumnSymbols>,
+  row_counts:     HashMap<String, usize>,
+  column_index:   usize,
+  data_path:      PathBuf,
+  meta_path:      PathBuf
 }
 
 impl Table {
@@ -49,12 +49,19 @@ impl Table {
         )
       ));
     }
-    let column_symbols = read_column_symbols(&data_path, &schema);
+    let column_symbols = schema
+      .columns
+      .iter()
+      .map(|c| TableColumnSymbols {
+        symbols: Vec::<String>::with_capacity(get_capacity(&c)),
+        path:    get_symbols_path(&data_path, &c)
+      })
+      .collect::<Vec<_>>();
 
     let table = Table {
       columns: Vec::new(),
       column_symbols,
-      partition_folder: String::new(),
+      data_folder: String::new(),
       schema,
       column_index: 0,
       row_counts: HashMap::new(),
@@ -75,7 +82,7 @@ impl Table {
     Ok(Table {
       columns: Vec::new(),
       column_symbols,
-      partition_folder: String::new(),
+      data_folder: String::new(),
       schema,
       column_index: 0,
       row_counts,

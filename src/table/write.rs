@@ -30,7 +30,7 @@ impl Table {
   // https://github.com/rust-lang/rust/issues/44580
   fn put_bytes(&mut self, bytes: &[u8]) {
     let size = bytes.len();
-    let row_count = self.row_counts.get(&self.partition_folder).unwrap_or(&0);
+    let row_count = self.row_counts.get(&self.data_folder).unwrap_or(&0);
     let offset = row_count * size;
     self.columns[self.column_index].data[offset..offset + size].copy_from_slice(bytes);
     self.column_index += 1;
@@ -45,18 +45,18 @@ impl Table {
   pub fn get_row_count(&self) -> usize {
     self
       .row_counts
-      .get(&self.partition_folder)
-      .expect(&format!("No row count for {}", &self.partition_folder))
+      .get(&self.data_folder)
+      .expect(&format!("No row count for {}", &self.data_folder))
       .clone()
   }
 
   pub fn put_timestamp(&mut self, val: i64) {
     if self.column_index == 0 {
       let partition_folder = self.get_partition_folder(val);
-      if partition_folder != self.partition_folder {
-        self.partition_folder = partition_folder;
+      if partition_folder != self.data_folder {
+        self.data_folder = partition_folder;
         let mut data_path = self.data_path.clone();
-        data_path.push(&self.partition_folder);
+        data_path.push(&self.data_folder);
         create_dir_all(&data_path).expect(&format!("Cannot create dir {:?}", &data_path));
         self.columns = self.open_columns(&data_path, 0);
       }
@@ -127,13 +127,13 @@ impl Table {
 
   pub fn write(&mut self) {
     self.column_index = 0;
-    let row_count = match self.row_counts.get(&self.partition_folder) {
+    let row_count = match self.row_counts.get(&self.data_folder) {
       Some(n) => *n,
       None => 0
     };
     self
       .row_counts
-      .insert(self.partition_folder.clone(), row_count + 1);
+      .insert(self.data_folder.clone(), row_count + 1);
     // Check if next write will be larger than file
     for c in &mut self.columns {
       let size = c.data.len();
