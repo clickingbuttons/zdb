@@ -63,9 +63,9 @@ impl Table {
     }
     self.put_i64(val);
   }
-  pub fn put_currency(&mut self, val: f32) {
-    self.put_f32(val);
-  }
+
+  pub fn put_currency(&mut self, val: f32) { self.put_f32(val) }
+
   pub fn put_symbol(&mut self, val: &str) {
     let symbols = &mut self.column_symbols[self.column_index].symbols;
     let index = symbols.iter().position(|s| s == val);
@@ -92,24 +92,18 @@ impl Table {
       }
     }
   }
-  pub fn put_i32(&mut self, val: i32) {
-    self.put_bytes(&val.to_le_bytes());
-  }
-  pub fn put_u32(&mut self, val: u32) {
-    self.put_bytes(&val.to_le_bytes());
-  }
-  pub fn put_f32(&mut self, val: f32) {
-    self.put_bytes(&val.to_le_bytes());
-  }
-  pub fn put_i64(&mut self, val: i64) {
-    self.put_bytes(&val.to_le_bytes());
-  }
-  pub fn put_u64(&mut self, val: u64) {
-    self.put_bytes(&val.to_le_bytes());
-  }
-  pub fn put_f64(&mut self, val: f64) {
-    self.put_bytes(&val.to_le_bytes());
-  }
+
+  pub fn put_i32(&mut self, val: i32) { self.put_bytes(&val.to_le_bytes()) }
+
+  pub fn put_u32(&mut self, val: u32) { self.put_bytes(&val.to_le_bytes()) }
+
+  pub fn put_f32(&mut self, val: f32) { self.put_bytes(&val.to_le_bytes()) }
+
+  pub fn put_i64(&mut self, val: i64) { self.put_bytes(&val.to_le_bytes()) }
+
+  pub fn put_u64(&mut self, val: u64) { self.put_bytes(&val.to_le_bytes()) }
+
+  pub fn put_f64(&mut self, val: f64) { self.put_bytes(&val.to_le_bytes()) }
 
   fn write_symbols(&self) {
     for table_col_symbols in &self.column_symbols {
@@ -130,6 +124,7 @@ impl Table {
         .expect(&format!("Could not flush to symbols file {:?}", path));
     }
   }
+
   pub fn write(&mut self) {
     self.column_index = 0;
     let row_count = match self.row_counts.get(&self.partition_folder) {
@@ -165,6 +160,7 @@ impl Table {
       }
     }
   }
+
   pub fn flush(&mut self) {
     let row_count = self.get_row_count();
     for column in &mut self.columns {

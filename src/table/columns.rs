@@ -10,16 +10,16 @@ use std::{
 
 #[derive(Debug)]
 pub struct TableColumnSymbols {
-  pub path: PathBuf,
+  pub path:    PathBuf,
   pub symbols: Vec<String>
 }
 
 #[derive(Debug)]
 pub struct TableColumn {
-  pub name: String,
-  pub file: File,
-  pub data: memmap::MmapMut,
-  pub path: PathBuf,
+  pub name:   String,
+  pub file:   File,
+  pub data:   memmap::MmapMut,
+  pub path:   PathBuf,
   pub r#type: ColumnType
 }
 

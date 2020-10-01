@@ -38,7 +38,7 @@ impl FromStr for ColumnType {
 
 #[derive(Debug)]
 pub struct Column {
-  pub name: String,
+  pub name:   String,
   pub r#type: ColumnType
 }
 
@@ -52,8 +52,8 @@ impl Column {
 }
 
 pub struct Schema {
-  pub name: String,
-  pub columns: Vec<Column>,
+  pub name:         String,
+  pub columns:      Vec<Column>,
   pub partition_by: String
 }
 
@@ -77,8 +77,8 @@ impl fmt::Debug for Schema {
 impl<'a> Schema {
   pub fn new(name: &'a str) -> Schema {
     Schema {
-      name: name.to_owned(),
-      columns: vec![Column::new("ts", ColumnType::TIMESTAMP)],
+      name:         name.to_owned(),
+      columns:      vec![Column::new("ts", ColumnType::TIMESTAMP)],
       partition_by: String::new()
     }
   }

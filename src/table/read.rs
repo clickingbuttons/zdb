@@ -1,6 +1,6 @@
 use crate::{
   schema::{Column, ColumnType, Schema},
-  table::{columns::TableColumnSymbols,Table}
+  table::{columns::TableColumnSymbols, Table}
 };
 use std::{
   cmp::max,
@@ -12,7 +12,6 @@ use std::{
   path::PathBuf
 };
 use time::{date, NumericalDuration, PrimitiveDateTime};
-
 
 macro_rules! read_bytes {
   ($_type:ty, $bytes:expr, $i:expr) => {{

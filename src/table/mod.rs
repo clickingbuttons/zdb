@@ -24,14 +24,14 @@ pub fn get_data_path(name: &str) -> PathBuf {
 
 #[derive(Debug)]
 pub struct Table {
-  schema: Schema,
+  schema:           Schema,
   partition_folder: String,
-  columns: Vec<TableColumn>,
-  column_symbols: Vec<TableColumnSymbols>,
-  row_counts: HashMap<String, usize>,
-  column_index: usize,
-  data_path: PathBuf,
-  meta_path: PathBuf
+  columns:          Vec<TableColumn>,
+  column_symbols:   Vec<TableColumnSymbols>,
+  row_counts:       HashMap<String, usize>,
+  column_index:     usize,
+  data_path:        PathBuf,
+  meta_path:        PathBuf
 }
 
 impl Table {
