@@ -62,5 +62,5 @@ fn main() {
 
   agg1d.flush();
 
-  agg1d.read(0, 0);
+  agg1d.scan(0, 0);
 }

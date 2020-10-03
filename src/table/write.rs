@@ -1,17 +1,27 @@
-use crate::{
-  schema::ColumnType,
-  table::Table
-};
+use crate::{schema::ColumnType, table::Table};
 use memmap;
-use std::{fs::{create_dir_all, OpenOptions}, io::Write, iter::FromIterator};
+use std::{
+  fs::{create_dir_all, OpenOptions},
+  io::Write,
+  iter::FromIterator
+};
 use time::{date, NumericalDuration, PrimitiveDateTime};
+
+use super::PartitionMeta;
+
+impl PartitionMeta {
+  pub fn increment_row_count(&mut self) -> usize {
+    self.row_count += 1;
+    self.row_count
+  }
+}
 
 impl Table {
   // TODO: Use const generics once stable.
   // https://github.com/rust-lang/rust/issues/44580
   fn put_bytes(&mut self, bytes: &[u8]) {
     let size = bytes.len();
-    let row_count = self.row_counts.get(&self.data_folder).unwrap_or(&0);
+    let row_count = self.get_row_count();
     let offset = row_count * size;
     self.columns[self.column_index].data[offset..offset + size].copy_from_slice(bytes);
     self.column_index += 1;
@@ -25,10 +35,10 @@ impl Table {
 
   pub fn get_row_count(&self) -> usize {
     self
-      .row_counts
+      .partition_meta
       .get(&self.data_folder)
       .expect(&format!("No row count for {}", &self.data_folder))
-      .clone()
+      .row_count
   }
 
   pub fn put_timestamp(&mut self, val: i64) {
@@ -41,6 +51,22 @@ impl Table {
         create_dir_all(&data_path).expect(&format!("Cannot create dir {:?}", &data_path));
         self.columns = self.read_columns(&data_path, 0);
       }
+
+      match self.partition_meta.get_mut(&self.data_folder) {
+        Some(meta) => {
+          meta.to_ts = val;
+        }
+        None => {
+          let new_meta = PartitionMeta {
+            from_ts:   val,
+            to_ts:     val,
+            row_count: 0
+          };
+          self
+            .partition_meta
+            .insert(self.data_folder.clone(), new_meta);
+        }
+      };
     }
     self.put_i64(val);
   }
@@ -108,13 +134,8 @@ impl Table {
 
   pub fn write(&mut self) {
     self.column_index = 0;
-    let row_count = match self.row_counts.get(&self.data_folder) {
-      Some(n) => *n,
-      None => 0
-    };
-    self
-      .row_counts
-      .insert(self.data_folder.clone(), row_count + 1);
+    let partition_meta = self.partition_meta.get_mut(&self.data_folder).unwrap();
+    let row_count = partition_meta.increment_row_count();
     // Check if next write will be larger than file
     for c in &mut self.columns {
       let size = c.data.len();
@@ -148,33 +169,37 @@ impl Table {
       .create(true)
       .open(&self.meta_path)
       .expect(&format!("Could not open meta file {:?}", &self.meta_path));
-  
+
     let mut meta_text = String::from("[columns]\n");
     meta_text += &self
       .schema
       .columns
       .iter()
       .skip(1)
-      .map(|c| format!("{}, {:?}", c.name, c.r#type))
+      .map(|c| format!("{}/{:?}", c.name, c.r#type))
       .collect::<Vec<_>>()
       .join("\n");
     meta_text += "\n\n[partition_by]\n";
     meta_text += &self.schema.partition_by;
-    meta_text += "\n\n[row_counts]\n";
-    let mut partitions = Vec::from_iter(self.row_counts.keys().cloned());
+    meta_text += "\n\n";
+    let mut partitions = Vec::from_iter(self.partition_meta.keys().cloned());
     partitions.sort();
     for partition in partitions {
+      let partition_meta = self.partition_meta.get(&partition).unwrap();
       meta_text += &format!(
-        "{}/{}\n",
-        &partition,
-        &self.row_counts.get(&partition).unwrap()
+        "[partitions.{}]\n{}/{}/{}\n",
+        &partition, partition_meta.from_ts, partition_meta.to_ts, partition_meta.row_count,
       );
     }
-  
-    f.write_all(meta_text.as_bytes())
-      .expect(&format!("Could not write to meta file {:?}", &self.meta_path));
-    f.flush()
-      .expect(&format!("Could not flush to meta file {:?}", &self.meta_path));
+
+    f.write_all(meta_text.as_bytes()).expect(&format!(
+      "Could not write to meta file {:?}",
+      &self.meta_path
+    ));
+    f.flush().expect(&format!(
+      "Could not flush to meta file {:?}",
+      &self.meta_path
+    ));
     Ok(())
   }
 
@@ -196,6 +221,8 @@ impl Table {
       ));
     }
     self.write_symbols();
-    self.write_meta().expect("Could not write meta file with row_count");
+    self
+      .write_meta()
+      .expect("Could not write meta file with row_count");
   }
 }
