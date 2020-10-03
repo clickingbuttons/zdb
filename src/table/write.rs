@@ -2,8 +2,7 @@ use crate::{schema::ColumnType, table::Table};
 use memmap;
 use std::{
   fs::{create_dir_all, OpenOptions},
-  io::Write,
-  iter::FromIterator
+  io::Write
 };
 use time::{date, NumericalDuration, PrimitiveDateTime};
 
@@ -161,46 +160,6 @@ impl Table {
         // https://man7.org/linux/man-pages/man2/mremap.2.html
       }
     }
-  }
-
-  pub fn write_meta(&self) -> std::io::Result<()> {
-    let mut f = OpenOptions::new()
-      .write(true)
-      .create(true)
-      .open(&self.meta_path)
-      .expect(&format!("Could not open meta file {:?}", &self.meta_path));
-
-    let mut meta_text = String::from("[columns]\n");
-    meta_text += &self
-      .schema
-      .columns
-      .iter()
-      .skip(1)
-      .map(|c| format!("{}/{:?}", c.name, c.r#type))
-      .collect::<Vec<_>>()
-      .join("\n");
-    meta_text += "\n\n[partition_by]\n";
-    meta_text += &self.schema.partition_by;
-    meta_text += "\n\n";
-    let mut partitions = Vec::from_iter(self.partition_meta.keys().cloned());
-    partitions.sort();
-    for partition in partitions {
-      let partition_meta = self.partition_meta.get(&partition).unwrap();
-      meta_text += &format!(
-        "[partitions.{}]\n{}/{}/{}\n",
-        &partition, partition_meta.from_ts, partition_meta.to_ts, partition_meta.row_count,
-      );
-    }
-
-    f.write_all(meta_text.as_bytes()).expect(&format!(
-      "Could not write to meta file {:?}",
-      &self.meta_path
-    ));
-    f.flush().expect(&format!(
-      "Could not flush to meta file {:?}",
-      &self.meta_path
-    ));
-    Ok(())
   }
 
   pub fn flush(&mut self) {

@@ -1,9 +1,11 @@
+mod meta;
 mod read;
 mod write;
 
 use crate::schema::*;
 // "meta" crate is reserved
 // https://internals.rust-lang.org/t/is-the-module-name-meta-forbidden/9587/3
+use crate::table::meta::*;
 use read::*;
 use std::{
   collections::HashMap,
