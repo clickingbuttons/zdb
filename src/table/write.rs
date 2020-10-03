@@ -48,7 +48,7 @@ impl Table {
         let mut data_path = self.data_path.clone();
         data_path.push(&self.data_folder);
         create_dir_all(&data_path).expect(&format!("Cannot create dir {:?}", &data_path));
-        self.columns = self.read_columns(&data_path, 0);
+        self.columns = self.open_columns(&data_path, 0);
       }
 
       match self.partition_meta.get_mut(&self.data_folder) {

@@ -4,132 +4,10 @@ use crate::{
 };
 use memmap::MmapMut;
 use std::{
-  cmp::max,
-  convert::TryInto,
   fs::{File, OpenOptions},
   io::{BufRead, BufReader, ErrorKind},
-  iter::FromIterator,
-  mem::size_of,
   path::PathBuf
 };
-use time::{date, NumericalDuration, PrimitiveDateTime};
-
-macro_rules! read_bytes {
-  ($_type:ty, $bytes:expr, $i:expr) => {{
-    let size = size_of::<$_type>();
-    <$_type>::from_le_bytes($bytes[$i * size..$i * size + size].try_into().unwrap())
-  }};
-}
-
-fn format_currency(dollars: f32, sig_figs: usize) -> String {
-  let mut res = String::with_capacity(sig_figs + 4);
-
-  if dollars as i32 >= i32::pow(10, sig_figs as u32) {
-    res += &format!("{:.width$e}", dollars, width = sig_figs - 4);
-  } else {
-    let mut num_digits = 0;
-    let mut tmp_dollars = dollars;
-    while tmp_dollars > 1. {
-      tmp_dollars /= 10.;
-      num_digits += 1;
-    }
-    res += &format!(
-      "{:<width1$.width2$}",
-      dollars,
-      width1 = num_digits,
-      width2 = max(sig_figs - num_digits, 1)
-    );
-  }
-
-  String::from(res.trim_end_matches('0').trim_end_matches('.'))
-}
-
-impl Table {
-  pub fn read_columns(&self, partition_path: &PathBuf, row_count: usize) -> Vec<TableColumn> {
-    self
-      .schema
-      .columns
-      .iter()
-      .map(|column| {
-        let path = get_col_path(&partition_path, &column);
-        let (file, data) = get_column_data(&path, row_count, column.r#type);
-        TableColumn {
-          name: column.name.clone(),
-          file,
-          data,
-          path,
-          r#type: column.r#type.clone()
-        }
-      })
-      .collect::<Vec<_>>()
-  }
-
-  pub fn scan(&mut self, _from_ts: i64, _to_ts: i64) {
-    let mut partitions = Vec::from_iter(self.partition_meta.keys().cloned());
-    partitions.sort();
-    for partition in partitions {
-      self.data_folder = partition;
-      let mut partition_path = PathBuf::from(&self.data_path);
-      partition_path.push(&self.data_folder);
-      let columns = self.read_columns(&partition_path, 0);
-      let row_count = self.get_row_count();
-      for i in 0..row_count {
-        for (j, c) in columns.iter().enumerate() {
-          match c.r#type {
-            ColumnType::TIMESTAMP => {
-              let nanoseconds = read_bytes!(i64, c.data, i);
-              let time: PrimitiveDateTime =
-                date!(1970 - 01 - 01).midnight() + nanoseconds.nanoseconds();
-
-              print!("{}", time.format("%Y-%m-%d %H:%M:%S.%N"));
-            }
-            ColumnType::CURRENCY => {
-              print!("{:>9}", format_currency(read_bytes!(f32, c.data, i), 7));
-            }
-            ColumnType::SYMBOL8 => {
-              let symbol_index = read_bytes!(u8, c.data, i);
-              let symbols = &self.column_symbols[j].symbols;
-
-              print!("{:7}", symbols[symbol_index as usize - 1]);
-            }
-            ColumnType::SYMBOL16 => {
-              let symbol_index = read_bytes!(u16, c.data, i);
-              let symbols = &self.column_symbols[j].symbols;
-
-              print!("{:7}", symbols[symbol_index as usize - 1]);
-            }
-            ColumnType::SYMBOL32 => {
-              let symbol_index = read_bytes!(u32, c.data, i);
-              let symbols = &self.column_symbols[j].symbols;
-
-              print!("{:7}", symbols[symbol_index as usize - 1]);
-            }
-            ColumnType::I32 => {
-              print!("{}", read_bytes!(i32, c.data, i));
-            }
-            ColumnType::U32 => {
-              print!("{}", read_bytes!(u32, c.data, i));
-            }
-            ColumnType::F32 => {
-              print!("{:.2}", read_bytes!(f32, c.data, i));
-            }
-            ColumnType::I64 => {
-              print!("{}", read_bytes!(i64, c.data, i));
-            }
-            ColumnType::U64 => {
-              print!("{:>10}", read_bytes!(u64, c.data, i));
-            }
-            ColumnType::F64 => {
-              print!("{}", read_bytes!(f64, c.data, i));
-            }
-          }
-          print!(" ")
-        }
-        println!("")
-      }
-    }
-  }
-}
 
 pub fn get_symbols_path(data_path: &PathBuf, column: &Column) -> PathBuf {
   let mut path = data_path.clone();
@@ -218,5 +96,26 @@ fn get_column_data(path: &PathBuf, row_count: usize, column_type: ColumnType) ->
       .expect(&format!("Could not mmapp {:?}", path));
 
     (file, data)
+  }
+}
+
+impl Table {
+  pub fn open_columns(&self, partition_path: &PathBuf, row_count: usize) -> Vec<TableColumn> {
+    self
+      .schema
+      .columns
+      .iter()
+      .map(|column| {
+        let path = get_col_path(&partition_path, &column);
+        let (file, data) = get_column_data(&path, row_count, column.r#type);
+        TableColumn {
+          name: column.name.clone(),
+          file,
+          data,
+          path,
+          r#type: column.r#type.clone()
+        }
+      })
+      .collect::<Vec<_>>()
   }
 }

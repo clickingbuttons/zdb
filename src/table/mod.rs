@@ -1,5 +1,6 @@
 mod meta;
 mod read;
+mod scan;
 mod write;
 
 use crate::schema::*;
