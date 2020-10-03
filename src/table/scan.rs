@@ -1,5 +1,5 @@
 use crate::{schema::ColumnType, table::Table};
-use std::{cmp::max, convert::TryInto, iter::FromIterator, mem::size_of, path::PathBuf};
+use std::{cmp::max, convert::TryInto, mem::size_of, path::PathBuf};
 use time::{date, NumericalDuration, PrimitiveDateTime};
 
 macro_rules! read_bytes {
@@ -33,11 +33,20 @@ fn format_currency(dollars: f32, sig_figs: usize) -> String {
 }
 
 impl Table {
-  pub fn scan(&mut self, _from_ts: i64, _to_ts: i64) {
-    let mut partitions = Vec::from_iter(self.partition_meta.keys().cloned());
-    partitions.sort();
-    for partition in partitions {
-      self.data_folder = partition;
+  pub fn scan(&mut self, from_ts: i64, to_ts: i64) {
+    let mut partitions = self
+      .partition_meta
+      .iter()
+      .filter(|(_data_folder, partition_meta)| {
+        if partition_meta.from_ts < from_ts || partition_meta.from_ts > to_ts {
+          return false;
+        }
+        true
+      })
+      .collect::<Vec<_>>();
+    partitions.sort_by_key(|(_data_folder, partition_meta)| partition_meta.from_ts);
+    for (data_folder, _partition_meta) in partitions {
+      self.data_folder = data_folder.to_owned();
       let mut partition_path = PathBuf::from(&self.data_path);
       partition_path.push(&self.data_folder);
       let columns = self.open_columns(&partition_path, 0);
@@ -47,6 +56,9 @@ impl Table {
           match c.r#type {
             ColumnType::TIMESTAMP => {
               let nanoseconds = read_bytes!(i64, c.data, i);
+              if j == 0 && nanoseconds > to_ts {
+                return;
+              }
               let time: PrimitiveDateTime =
                 date!(1970 - 01 - 01).midnight() + nanoseconds.nanoseconds();
 
@@ -98,4 +110,6 @@ impl Table {
       }
     }
   }
+
+  pub fn scan_all(&mut self) { self.scan(std::i64::MIN, std::i64::MAX) }
 }

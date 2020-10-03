@@ -1,4 +1,5 @@
 use rand::{prelude::ThreadRng, Rng};
+use time::date;
 use zdb::{schema::*, table::*};
 
 static ALPHABET: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -57,6 +58,7 @@ fn main() {
       Column::new("close_un", ColumnType::CURRENCY),
       Column::new("volume", ColumnType::U64),
     ])
+    // Specifiers: https://docs.rs/time/0.2.22/time/index.html#formatting
     .partition_by("%Y");
 
   let mut agg1d = Table::create_or_open(schema).expect("Could not open table");
@@ -79,5 +81,9 @@ fn main() {
 
   agg1d.flush();
 
-  agg1d.scan(0, 0);
+  // agg1d.scan_all();
+  agg1d.scan(
+    0,
+    date!(1970 - 02 - 01).midnight().assume_utc().timestamp() * 1_000_000_000
+  );
 }
