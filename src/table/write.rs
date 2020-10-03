@@ -53,6 +53,12 @@ impl Table {
 
       match self.partition_meta.get_mut(&self.data_folder) {
         Some(meta) => {
+          if val < meta.to_ts {
+            panic!(format!(
+              "Timestamp {} is out of order (previous ts is {})",
+              val, meta.to_ts
+            ));
+          }
           meta.to_ts = val;
         }
         None => {
@@ -135,6 +141,7 @@ impl Table {
     self.column_index = 0;
     let partition_meta = self.partition_meta.get_mut(&self.data_folder).unwrap();
     let row_count = partition_meta.increment_row_count();
+    // Check if next write contains ts
     // Check if next write will be larger than file
     for c in &mut self.columns {
       let size = c.data.len();

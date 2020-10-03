@@ -1,15 +1,25 @@
-use rand::Rng;
-use time::date;
+use rand::{prelude::ThreadRng, Rng};
 use zdb::{schema::*, table::*};
 
-fn generate_row() -> (i64, &'static str, f32, f32, f32, f32, f32, u64) {
-  let mut rng = rand::thread_rng();
-  let from = date!(2003 - 01 - 01).midnight().assume_utc().timestamp() * 1_000_000_000;
-  let to = date!(2023 - 01 - 01).midnight().assume_utc().timestamp() * 1_000_000_000;
-  let nanoseconds = rng.gen_range(from, to);
+static ALPHABET: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+fn generate_symbol(num_chars: usize, rng: &mut ThreadRng) -> String {
+  let mut res = String::with_capacity(num_chars);
+  for _ in 0..num_chars {
+    let rand_index = rng.gen_range(0, ALPHABET.len());
+    res += &ALPHABET[rand_index..rand_index + 1];
+  }
+
+  res
+}
+
+fn generate_row(from_ts: i64, rng: &mut ThreadRng) -> (i64, String, f32, f32, f32, f32, f32, u64) {
+  let low = from_ts;
+  let high = low + 24 * 60 * 60 * 1_000_000_000;
+  let nanoseconds = rng.gen_range(low, high);
   (
     nanoseconds,
-    "AAPL",
+    generate_symbol(rng.gen_range(1, 5), rng),
     rng.gen(),
     rng.gen(),
     rng.gen(),
@@ -17,6 +27,23 @@ fn generate_row() -> (i64, &'static str, f32, f32, f32, f32, f32, u64) {
     rng.gen(),
     rng.gen()
   )
+}
+
+fn generate_rows(
+  from_ts: i64,
+  row_count: usize,
+  rng: &mut ThreadRng
+) -> Vec<(i64, String, f32, f32, f32, f32, f32, u64)> {
+  let mut res = Vec::with_capacity(row_count);
+
+  let mut from_ts = from_ts;
+  for _ in 0..row_count {
+    let row = generate_row(from_ts, rng);
+    from_ts = row.0;
+    res.push(row);
+  }
+
+  res
 }
 
 fn main() {
@@ -33,24 +60,14 @@ fn main() {
     .partition_by("%Y");
 
   let mut agg1d = Table::create_or_open(schema).expect("Could not open table");
+  let last_ts = agg1d.get_last_ts();
 
-  #[rustfmt::skip]
-  let mut rows = vec![
-    (1073077200000054742, "MSFT",    40.23,  50.,  30.,  44.,  44.,   10445300u64),
-    (1073077200001234556, "AAPL",     300., 400., 200., 340., 340.,  212312000u64),
-    (1073077212356789012, "AMZN",   40.234,  50.,  30.,  44.,  44.,   30312300u64),
-    (1073077220000000000, "BEVD",   1.2345,  50.,  30.,  44.,  44.,  161000000u64),
-    (1073077230000000000, "BKSH", 2567890.,  50.,  30.,  44.,  44., 5194967296u64),
-  ];
-
-  for _ in 0..5 {
-    rows.push(generate_row());
-  }
+  let rows = generate_rows(last_ts, 100, &mut rand::thread_rng());
 
   // Maybe one day we can do this dynamically...
   for r in rows {
     agg1d.put_timestamp(r.0);
-    agg1d.put_symbol(r.1);
+    agg1d.put_symbol(&r.1);
     agg1d.put_f32(r.2);
     agg1d.put_f32(r.3);
     agg1d.put_f32(r.4);
