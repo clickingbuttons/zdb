@@ -1,6 +1,6 @@
 mod meta;
 mod read;
-mod scan;
+pub mod scan;
 mod write;
 
 use crate::schema::*;
@@ -39,18 +39,18 @@ pub struct PartitionMeta {
 
 #[derive(Debug)]
 pub struct Table {
-  schema:         Schema,
+  schema: Schema,
   // Date-formatted string for partition
-  data_folder:    String,
+  data_folder: String,
   // Working directory for column files
-  data_path:      PathBuf,
+  data_path: PathBuf,
   // This file's existance means the Table exists
-  meta_path:      PathBuf,
+  meta_path: PathBuf,
   // Current column for read/writes
-  column_index:   usize,
-  columns:        Vec<TableColumn>,
+  columns: Vec<TableColumn>,
+  column_index: usize,
   // Table-wide symbols for columns of type Symbol
-  column_symbols: Vec<TableColumnSymbols>,
+  pub column_symbols: Vec<TableColumnSymbols>,
   // Partition metadata
   partition_meta: HashMap<String, PartitionMeta>
 }

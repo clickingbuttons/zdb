@@ -1,6 +1,9 @@
 use rand::{prelude::ThreadRng, Rng};
 use time::date;
-use zdb::{schema::*, table::*};
+use zdb::{
+  schema::*,
+  table::{scan::FormatCurrency, *}
+};
 
 static ALPHABET: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
@@ -70,20 +73,37 @@ fn main() {
   for r in rows {
     agg1d.put_timestamp(r.0);
     agg1d.put_symbol(&r.1);
-    agg1d.put_f32(r.2);
-    agg1d.put_f32(r.3);
-    agg1d.put_f32(r.4);
-    agg1d.put_f32(r.5);
-    agg1d.put_f32(r.6);
+    agg1d.put_currency(r.2);
+    agg1d.put_currency(r.3);
+    agg1d.put_currency(r.4);
+    agg1d.put_currency(r.5);
+    agg1d.put_currency(r.6);
     agg1d.put_u64(r.7);
     agg1d.write();
   }
-
   agg1d.flush();
 
-  // agg1d.scan_all();
-  agg1d.scan(
+  // fn use_filter<F>(mut func: F)
+  // where
+  //   F: FnMut(usize) -> bool
+  // {
+  //   println!("using filter 5={} 10={}", func(5), func(10));
+  // }
+
+  // use_filter(|y| y > 5);
+  let rows = agg1d.scan(
     0,
-    date!(1970 - 02 - 01).midnight().assume_utc().timestamp() * 1_000_000_000
+    date!(1970 - 02 - 01).midnight().assume_utc().timestamp() * 1_000_000_000,
+    &vec!["ts", "ticker", "close", "volume"]
   );
+
+  for r in rows {
+    println!(
+      "{} {:7} {:<9} {:>10}",
+      r[0].get_timestamp().format("%Y-%m-%d %H:%M:%S.%N"),
+      r[1].get_symbol(),
+      r[2].get_f32().format_currency(7),
+      r[3].get_u64()
+    );
+  }
 }

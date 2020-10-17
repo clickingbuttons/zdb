@@ -85,8 +85,13 @@ fn get_column_data(path: &PathBuf, row_count: usize, column_type: ColumnType) ->
     .create(true)
     .open(&path)
     .expect(&format!("Unable to open file {:?}", path));
-  // Allocate extra 1GB per column (expect some writes)
-  let init_size = row_count * Table::get_row_size(column_type) + 1024 * 1024 * 1024;
+  // Allocate extra 1GB per column (expect many writes)
+  let extra_buffer = if row_count == 0 {
+    1
+  } else {
+    1024 * 1024 * 1024
+  };
+  let init_size = row_count * Table::get_row_size(column_type) + extra_buffer;
   file
     .set_len(init_size as u64)
     .expect(&format!("Could not truncate {:?} to {}", path, init_size));
@@ -100,22 +105,29 @@ fn get_column_data(path: &PathBuf, row_count: usize, column_type: ColumnType) ->
 }
 
 impl Table {
+  pub fn open_column(
+    &self,
+    partition_path: &PathBuf,
+    row_count: usize,
+    column: &Column
+  ) -> TableColumn {
+    let path = get_col_path(&partition_path, &column);
+    let (file, data) = get_column_data(&path, row_count, column.r#type);
+    TableColumn {
+      name: column.name.clone(),
+      file,
+      data,
+      path,
+      r#type: column.r#type.clone()
+    }
+  }
+
   pub fn open_columns(&self, partition_path: &PathBuf, row_count: usize) -> Vec<TableColumn> {
     self
       .schema
       .columns
       .iter()
-      .map(|column| {
-        let path = get_col_path(&partition_path, &column);
-        let (file, data) = get_column_data(&path, row_count, column.r#type);
-        TableColumn {
-          name: column.name.clone(),
-          file,
-          data,
-          path,
-          r#type: column.r#type.clone()
-        }
-      })
+      .map(|column| self.open_column(partition_path, row_count, column))
       .collect::<Vec<_>>()
   }
 }

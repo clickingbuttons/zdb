@@ -1,6 +1,87 @@
-use crate::{schema::ColumnType, table::Table};
+use crate::{
+  schema::{Column, ColumnType},
+  table::Table
+};
 use std::{cmp::max, convert::TryInto, mem::size_of, path::PathBuf};
 use time::{date, NumericalDuration, PrimitiveDateTime};
+
+static EPOCH: PrimitiveDateTime = date!(1970 - 01 - 01).midnight();
+
+// enum RowValue {
+//   TIME(PrimitiveDateTime),
+//   I64(i64),
+//   I32(i32),
+//   F64(f64),
+//   F32(f32),
+//   String(String)
+// }
+
+pub union RowValue<'a> {
+  pub sym: &'a String,
+  pub i32: i32,
+  pub u32: u32,
+  pub f32: f32,
+  pub i64: i64,
+  pub u64: u64,
+  pub f64: f64
+}
+
+pub struct ScanResult<'a> {
+  pub rows:    Vec<Vec<RowValue<'a>>>,
+  pub columns: Vec<Column>
+}
+
+impl RowValue<'_> {
+  pub fn get_timestamp(&self) -> PrimitiveDateTime {
+    let nanoseconds = unsafe { self.i64 };
+    EPOCH + nanoseconds.nanoseconds()
+  }
+
+  pub fn get_currency(&self) -> f32 { unsafe { self.f32 } }
+
+  pub fn get_symbol(&self) -> &String { unsafe { self.sym } }
+
+  pub fn get_i32(&self) -> i32 { unsafe { self.i32 } }
+
+  pub fn get_u32(&self) -> u32 { unsafe { self.u32 } }
+
+  pub fn get_f32(&self) -> f32 { unsafe { self.f32 } }
+
+  pub fn get_i64(&self) -> i64 { unsafe { self.i64 } }
+
+  pub fn get_u64(&self) -> u64 { unsafe { self.u64 } }
+
+  pub fn get_f64(&self) -> f64 { unsafe { self.f64 } }
+}
+
+pub trait FormatCurrency {
+  fn format_currency(self, sig_figs: usize) -> String;
+}
+
+impl FormatCurrency for f32 {
+  fn format_currency(self, sig_figs: usize) -> String {
+    let mut res = String::with_capacity(sig_figs + 4);
+
+    if self as i32 >= i32::pow(10, sig_figs as u32) {
+      res += &format!("{:.width$e}", self, width = sig_figs - 4);
+    } else {
+      let mut num_digits = 0;
+      let mut tmp_dollars = self;
+      while tmp_dollars > 1. {
+        tmp_dollars /= 10.;
+        num_digits += 1;
+      }
+      res += &format!(
+        "{:<width1$.width2$}",
+        self,
+        width1 = num_digits,
+        width2 = max(sig_figs - num_digits, 1)
+      );
+    }
+
+    String::from(res.trim_end_matches('0').trim_end_matches('.'))
+  }
+}
 
 macro_rules! read_bytes {
   ($_type:ty, $bytes:expr, $i:expr) => {{
@@ -9,107 +90,118 @@ macro_rules! read_bytes {
   }};
 }
 
-fn format_currency(dollars: f32, sig_figs: usize) -> String {
-  let mut res = String::with_capacity(sig_figs + 4);
-
-  if dollars as i32 >= i32::pow(10, sig_figs as u32) {
-    res += &format!("{:.width$e}", dollars, width = sig_figs - 4);
-  } else {
-    let mut num_digits = 0;
-    let mut tmp_dollars = dollars;
-    while tmp_dollars > 1. {
-      tmp_dollars /= 10.;
-      num_digits += 1;
-    }
-    res += &format!(
-      "{:<width1$.width2$}",
-      dollars,
-      width1 = num_digits,
-      width2 = max(sig_figs - num_digits, 1)
-    );
+// filters: Vec<(String, &FnMut())>
+impl Table {
+  fn get_union(&self, columns: &Vec<&str>) -> Vec<Column> {
+    columns
+      .iter()
+      .map(|col_name| {
+        self
+          .schema
+          .columns
+          .iter()
+          .find(|col| &col.name == col_name)
+          .expect(&format!("Column {} does not exist", col_name))
+          .clone()
+      })
+      .collect::<Vec<_>>()
   }
 
-  String::from(res.trim_end_matches('0').trim_end_matches('.'))
-}
+  fn get_symbol(&self, symbol_index: usize, col_name: &String) -> &String {
+    let symbol_column = self
+      .columns
+      .iter()
+      .position(|col| &col.name == col_name)
+      .expect(&format!("Column {} does not exist", col_name));
 
-impl Table {
-  pub fn scan(&mut self, from_ts: i64, to_ts: i64) {
+    &self.column_symbols[symbol_column].symbols[symbol_index as usize - 1]
+  }
+
+  pub fn scan(&mut self, from_ts: i64, to_ts: i64, columns: &Vec<&str>) -> Vec<Vec<RowValue>> {
+    let mut res = Vec::<Vec<RowValue>>::new();
     let mut partitions = self
       .partition_meta
       .iter()
       .filter(|(_data_folder, partition_meta)| {
-        if partition_meta.from_ts < from_ts || partition_meta.from_ts > to_ts {
-          return false;
-        }
-        true
+        partition_meta.from_ts > from_ts && partition_meta.from_ts < to_ts
       })
       .collect::<Vec<_>>();
     partitions.sort_by_key(|(_data_folder, partition_meta)| partition_meta.from_ts);
-    for (data_folder, _partition_meta) in partitions {
-      self.data_folder = data_folder.to_owned();
-      let mut partition_path = PathBuf::from(&self.data_path);
-      partition_path.push(&self.data_folder);
-      let columns = self.open_columns(&partition_path, 0);
-      let row_count = self.get_row_count();
-      for i in 0..row_count {
-        for (j, c) in columns.iter().enumerate() {
-          match c.r#type {
-            ColumnType::TIMESTAMP => {
-              let nanoseconds = read_bytes!(i64, c.data, i);
-              if j == 0 && nanoseconds > to_ts {
-                return;
-              }
-              let time: PrimitiveDateTime =
-                date!(1970 - 01 - 01).midnight() + nanoseconds.nanoseconds();
 
-              print!("{}", time.format("%Y-%m-%d %H:%M:%S.%N"));
+    let columns = self.get_union(&columns);
+
+    for (data_folder, partition_meta) in partitions {
+      let mut partition_path = PathBuf::from(&self.data_path);
+      partition_path.push(&data_folder);
+      let row_count = partition_meta.row_count;
+
+      let data_columns = columns
+        .iter()
+        .map(|column| self.open_column(&partition_path, row_count, column))
+        .collect::<Vec<_>>();
+      for row_index in 0..row_count {
+        let mut row = Vec::<RowValue>::with_capacity(data_columns.len());
+        for (col_index, table_column) in data_columns.iter().enumerate() {
+          match table_column.r#type {
+            ColumnType::TIMESTAMP => {
+              let nanoseconds = read_bytes!(i64, table_column.data, row_index);
+              if col_index == 0 && nanoseconds > to_ts {
+                return res;
+              }
+              row.push(RowValue { i64: nanoseconds });
             }
             ColumnType::CURRENCY => {
-              print!("{:>9}", format_currency(read_bytes!(f32, c.data, i), 7));
+              let f32 = read_bytes!(f32, table_column.data, row_index);
+              row.push(RowValue { f32 });
             }
             ColumnType::SYMBOL8 => {
-              let symbol_index = read_bytes!(u8, c.data, i);
-              let symbols = &self.column_symbols[j].symbols;
-
-              print!("{:7}", symbols[symbol_index as usize - 1]);
+              let symbol_index = read_bytes!(u8, table_column.data, row_index) as usize;
+              let sym = &self.get_symbol(symbol_index, &table_column.name);
+              row.push(RowValue { sym });
             }
             ColumnType::SYMBOL16 => {
-              let symbol_index = read_bytes!(u16, c.data, i);
-              let symbols = &self.column_symbols[j].symbols;
-
-              print!("{:7}", symbols[symbol_index as usize - 1]);
+              let symbol_index = read_bytes!(u16, table_column.data, row_index) as usize;
+              let sym = &self.get_symbol(symbol_index, &table_column.name);
+              row.push(RowValue { sym });
             }
             ColumnType::SYMBOL32 => {
-              let symbol_index = read_bytes!(u32, c.data, i);
-              let symbols = &self.column_symbols[j].symbols;
-
-              print!("{:7}", symbols[symbol_index as usize - 1]);
+              let symbol_index = read_bytes!(u32, table_column.data, row_index) as usize;
+              let sym = &self.get_symbol(symbol_index, &table_column.name);
+              row.push(RowValue { sym });
             }
             ColumnType::I32 => {
-              print!("{}", read_bytes!(i32, c.data, i));
+              let i32 = read_bytes!(i32, table_column.data, row_index);
+              row.push(RowValue { i32 });
             }
             ColumnType::U32 => {
-              print!("{}", read_bytes!(u32, c.data, i));
+              let u32 = read_bytes!(u32, table_column.data, row_index);
+              row.push(RowValue { u32 });
             }
             ColumnType::F32 => {
-              print!("{:.2}", read_bytes!(f32, c.data, i));
+              let f32 = read_bytes!(f32, table_column.data, row_index);
+              row.push(RowValue { f32 });
             }
             ColumnType::I64 => {
-              print!("{}", read_bytes!(i64, c.data, i));
+              let i64 = read_bytes!(i64, table_column.data, row_index);
+              row.push(RowValue { i64 });
             }
             ColumnType::U64 => {
-              print!("{:>10}", read_bytes!(u64, c.data, i));
+              let u64 = read_bytes!(u64, table_column.data, row_index);
+              row.push(RowValue { u64 });
             }
             ColumnType::F64 => {
-              print!("{}", read_bytes!(f64, c.data, i));
+              let f64 = read_bytes!(f64, table_column.data, row_index);
+              row.push(RowValue { f64 });
             }
           }
-          print!(" ")
         }
-        println!("")
+        res.push(row);
       }
     }
+
+    return res;
   }
 
-  pub fn scan_all(&mut self) { self.scan(std::i64::MIN, std::i64::MAX) }
+  // pub fn scan_from(&mut self, from_ts: i64, to_ts: i64) { self.scan_filters(from_ts, to_ts, vec![])}
+  // pub fn scan_all(&mut self) { self.scan_from(std::i64::MIN, std::i64::MAX) }
 }

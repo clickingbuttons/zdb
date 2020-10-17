@@ -36,7 +36,7 @@ impl FromStr for ColumnType {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Column {
   pub name:   String,
   pub r#type: ColumnType
