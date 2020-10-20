@@ -2,20 +2,13 @@ use crate::{
   schema::{Column, ColumnType},
   table::Table
 };
-use std::{cmp::max, convert::TryInto, mem::size_of, path::PathBuf};
+use std::{fmt::Debug, cmp::max, convert::TryInto, mem::size_of, path::PathBuf};
 use time::{date, NumericalDuration, PrimitiveDateTime};
 
 static EPOCH: PrimitiveDateTime = date!(1970 - 01 - 01).midnight();
 
-// enum RowValue {
-//   TIME(PrimitiveDateTime),
-//   I64(i64),
-//   I32(i32),
-//   F64(f64),
-//   F32(f32),
-//   String(String)
-// }
-
+// Important that this fits in single register.
+#[derive(Copy, Clone)]
 pub union RowValue<'a> {
   pub sym: &'a String,
   pub i32: i32,
@@ -26,9 +19,10 @@ pub union RowValue<'a> {
   pub f64: f64
 }
 
-pub struct ScanResult<'a> {
-  pub rows:    Vec<Vec<RowValue<'a>>>,
-  pub columns: Vec<Column>
+impl Debug for RowValue<'_> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.write_str(&format!("{:x}", self.get_i64()))
+  }
 }
 
 impl RowValue<'_> {
@@ -117,8 +111,9 @@ impl Table {
     &self.column_symbols[symbol_column].symbols[symbol_index as usize - 1]
   }
 
-  pub fn scan(&mut self, from_ts: i64, to_ts: i64, columns: &Vec<&str>) -> Vec<Vec<RowValue>> {
-    let mut res = Vec::<Vec<RowValue>>::new();
+  pub fn scan<'a, F>(&'a mut self, from_ts: i64, to_ts: i64, columns: Vec<&str>, mut accumulator: F)
+    where F: FnMut(Vec<RowValue<'a>>)
+  {
     let mut partitions = self
       .partition_meta
       .iter()
@@ -142,64 +137,63 @@ impl Table {
       for row_index in 0..row_count {
         let mut row = Vec::<RowValue>::with_capacity(data_columns.len());
         for (col_index, table_column) in data_columns.iter().enumerate() {
+          let data = &table_column.data;
           match table_column.r#type {
             ColumnType::TIMESTAMP => {
-              let nanoseconds = read_bytes!(i64, table_column.data, row_index);
+              let nanoseconds = read_bytes!(i64, data, row_index);
               if col_index == 0 && nanoseconds > to_ts {
-                return res;
+                return;
               }
               row.push(RowValue { i64: nanoseconds });
             }
             ColumnType::CURRENCY => {
-              let f32 = read_bytes!(f32, table_column.data, row_index);
+              let f32 = read_bytes!(f32, data, row_index);
               row.push(RowValue { f32 });
             }
             ColumnType::SYMBOL8 => {
-              let symbol_index = read_bytes!(u8, table_column.data, row_index) as usize;
-              let sym = &self.get_symbol(symbol_index, &table_column.name);
+              let symbol_index = read_bytes!(u8, data, row_index) as usize;
+              let sym = self.get_symbol(symbol_index, &table_column.name);
               row.push(RowValue { sym });
             }
             ColumnType::SYMBOL16 => {
-              let symbol_index = read_bytes!(u16, table_column.data, row_index) as usize;
-              let sym = &self.get_symbol(symbol_index, &table_column.name);
+              let symbol_index = read_bytes!(u16, data, row_index) as usize;
+              let sym = self.get_symbol(symbol_index, &table_column.name);
               row.push(RowValue { sym });
             }
             ColumnType::SYMBOL32 => {
-              let symbol_index = read_bytes!(u32, table_column.data, row_index) as usize;
-              let sym = &self.get_symbol(symbol_index, &table_column.name);
+              let symbol_index = read_bytes!(u32, data, row_index) as usize;
+              let sym = self.get_symbol(symbol_index, &table_column.name);
               row.push(RowValue { sym });
             }
             ColumnType::I32 => {
-              let i32 = read_bytes!(i32, table_column.data, row_index);
+              let i32 = read_bytes!(i32, data, row_index);
               row.push(RowValue { i32 });
             }
             ColumnType::U32 => {
-              let u32 = read_bytes!(u32, table_column.data, row_index);
+              let u32 = read_bytes!(u32, data, row_index);
               row.push(RowValue { u32 });
             }
             ColumnType::F32 => {
-              let f32 = read_bytes!(f32, table_column.data, row_index);
+              let f32 = read_bytes!(f32, data, row_index);
               row.push(RowValue { f32 });
             }
             ColumnType::I64 => {
-              let i64 = read_bytes!(i64, table_column.data, row_index);
+              let i64 = read_bytes!(i64, data, row_index);
               row.push(RowValue { i64 });
             }
             ColumnType::U64 => {
-              let u64 = read_bytes!(u64, table_column.data, row_index);
+              let u64 = read_bytes!(u64, data, row_index);
               row.push(RowValue { u64 });
             }
             ColumnType::F64 => {
-              let f64 = read_bytes!(f64, table_column.data, row_index);
+              let f64 = read_bytes!(f64, data, row_index);
               row.push(RowValue { f64 });
             }
           }
         }
-        res.push(row);
+        accumulator(row);
       }
     }
-
-    return res;
   }
 
   // pub fn scan_from(&mut self, from_ts: i64, to_ts: i64) { self.scan_filters(from_ts, to_ts, vec![])}

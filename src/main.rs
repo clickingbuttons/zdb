@@ -1,9 +1,6 @@
 use rand::{prelude::ThreadRng, Rng};
 use time::date;
-use zdb::{
-  schema::*,
-  table::{scan::FormatCurrency, *}
-};
+use zdb::{schema::*, table::{*, scan::{FormatCurrency,RowValue}}};
 
 static ALPHABET: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
@@ -91,10 +88,18 @@ fn main() {
   // }
 
   // use_filter(|y| y > 5);
-  let rows = agg1d.scan(
+  let mut rows = Vec::<Vec<RowValue>>::new();
+
+  let my_agg = |row| {
+    println!("row {:?}", row);
+    rows.push(row);
+  };
+
+  agg1d.scan(
     0,
-    date!(1970 - 02 - 01).midnight().assume_utc().timestamp() * 1_000_000_000,
-    &vec!["ts", "ticker", "close", "volume"]
+    date!(1980 - 02 - 01).midnight().assume_utc().timestamp() * 1_000_000_000,
+    vec!["ts", "ticker", "close", "volume"],
+    my_agg
   );
 
   for r in rows {

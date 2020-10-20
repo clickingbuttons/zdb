@@ -1,0 +1,1 @@
+index on symbols for fast where sym=x https://docs.rs/serde/1.0.117/serde/ser/trait.SerializeMap.html
