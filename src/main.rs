@@ -1,6 +1,6 @@
 use rand::{prelude::ThreadRng, Rng};
 use time::date;
-use zdb::{schema::*, table::{*, scan::{FormatCurrency,RowValue}}};
+use zdb::{schema::*, table::{*, scan::*}};
 
 static ALPHABET: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
@@ -80,26 +80,19 @@ fn main() {
   }
   agg1d.flush();
 
-  // fn use_filter<F>(mut func: F)
-  // where
-  //   F: FnMut(usize) -> bool
-  // {
-  //   println!("using filter 5={} 10={}", func(5), func(10));
-  // }
-
-  // use_filter(|y| y > 5);
   let mut rows = Vec::<Vec<RowValue>>::new();
-
-  let my_agg = |row| {
-    println!("row {:?}", row);
-    rows.push(row);
-  };
+  let mut sum = 0.0;
 
   agg1d.scan(
     0,
-    date!(1980 - 02 - 01).midnight().assume_utc().timestamp() * 1_000_000_000,
+    date!(1972 - 02 - 01).nanoseconds(),
     vec!["ts", "ticker", "close", "volume"],
-    my_agg
+    |row: Vec<RowValue>| {
+      if row[1].get_symbol() == "TX" {
+        sum += row[2].get_currency() as f64;
+        rows.push(row);
+      }
+    }
   );
 
   for r in rows {
@@ -111,4 +104,5 @@ fn main() {
       r[3].get_u64()
     );
   }
+  println!("Sum {}", sum);
 }

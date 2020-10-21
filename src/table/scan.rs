@@ -3,9 +3,19 @@ use crate::{
   table::Table
 };
 use std::{fmt::Debug, cmp::max, convert::TryInto, mem::size_of, path::PathBuf};
-use time::{date, NumericalDuration, PrimitiveDateTime};
+use time::{Date, NumericalDuration, PrimitiveDateTime, date};
 
 static EPOCH: PrimitiveDateTime = date!(1970 - 01 - 01).midnight();
+
+pub trait Nanoseconds {
+  fn nanoseconds(&self) -> i64;
+}
+
+impl Nanoseconds for Date {
+  fn nanoseconds(&self) -> i64 {
+    self.midnight().assume_utc().timestamp() * 1_000_000_000
+  }
+}
 
 // Important that this fits in single register.
 #[derive(Copy, Clone)]
@@ -85,7 +95,7 @@ macro_rules! read_bytes {
 }
 
 // filters: Vec<(String, &FnMut())>
-impl Table {
+impl<'a> Table {
   fn get_union(&self, columns: &Vec<&str>) -> Vec<Column> {
     columns
       .iter()
@@ -111,7 +121,7 @@ impl Table {
     &self.column_symbols[symbol_column].symbols[symbol_index as usize - 1]
   }
 
-  pub fn scan<'a, F>(&'a mut self, from_ts: i64, to_ts: i64, columns: Vec<&str>, mut accumulator: F)
+  pub fn scan<F>(&'a self, from_ts: i64, to_ts: i64, columns: Vec<&str>, mut accumulator: F)
     where F: FnMut(Vec<RowValue<'a>>)
   {
     let mut partitions = self
