@@ -31,7 +31,7 @@ impl Table {
 
   fn get_partition_folder(&self, val: i64) -> String {
     let time: NaiveDateTime =
-      NaiveDateTime::from_timestamp(val / 1_000_000, (val % 1_000_000) as u32);
+      NaiveDateTime::from_timestamp(val / 1_000_000_000, (val % 1_000_000_000) as u32);
 
     // Specifiers: https://docs.rs/chrono/0.3.1/chrono/format/strftime/index.html
     match self.schema.partition_by {
@@ -94,7 +94,7 @@ impl Table {
             meta.clone()
           }
           None => {
-            let date = NaiveDateTime::from_timestamp(val / 1_000_000, (val % 1_000_000) as u32);
+            let date = NaiveDateTime::from_timestamp(val / 1_000_000_000, (val % 1_000_000_000) as u32);
             let min_ts = self.get_partition_ts(date, 0);
             let max_ts = self.get_partition_ts(date, 1);
             PartitionMeta {

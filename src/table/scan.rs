@@ -26,7 +26,7 @@ impl Debug for RowValue<'_> {
 impl RowValue<'_> {
   pub fn get_timestamp(&self) -> NaiveDateTime {
     let nanoseconds = unsafe { self.i64 };
-    NaiveDateTime::from_timestamp(nanoseconds / 1_000_000, (nanoseconds % 1_000_000) as u32)
+    NaiveDateTime::from_timestamp(nanoseconds / 1_000_000_000, (nanoseconds % 1_000_000_000) as u32)
   }
 
   pub fn get_currency(&self) -> f32 { unsafe { self.f32 } }

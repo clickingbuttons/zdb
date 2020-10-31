@@ -7,6 +7,18 @@ use zdb::{schema::*, table::*};
 
 static ALPHABET: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
+#[derive(Debug, Clone)]
+struct OHLCV {
+  ts: i64,
+  symbol: String,
+  open: f32,
+  high: f32,
+  low: f32,
+  close: f32,
+  close_un: f32,
+  volume: u64
+}
+
 fn generate_symbol(num_chars: usize, rng: &mut ThreadRng) -> String {
   let mut res = String::with_capacity(num_chars);
   for _ in 0..num_chars {
@@ -18,25 +30,25 @@ fn generate_symbol(num_chars: usize, rng: &mut ThreadRng) -> String {
 }
 
 fn generate_row(
-  nanosecond_offset: i64,
+  ts: i64,
   rng: &mut ThreadRng
-) -> (i64, String, f32, f32, f32, f32, f32, u64) {
-  (
-    nanosecond_offset,
-    generate_symbol(rng.gen_range(1, 5), rng),
-    rng.gen(),
-    rng.gen(),
-    rng.gen(),
-    rng.gen(),
-    rng.gen(),
-    rng.gen()
-  )
+) -> OHLCV {
+  OHLCV {
+    ts,
+    symbol: generate_symbol(rng.gen_range(1, 5), rng),
+    open: rng.gen(),
+    high: rng.gen(),
+    low: rng.gen(),
+    close: rng.gen(),
+    close_un: rng.gen(),
+    volume: rng.gen()
+  }
 }
 
 fn generate_rows(
   row_count: usize,
   rng: &mut ThreadRng
-) -> Vec<(i64, String, f32, f32, f32, f32, f32, u64)> {
+) -> Vec<OHLCV> {
   let mut res = Vec::with_capacity(row_count);
 
   for i in 0..row_count {
@@ -47,7 +59,7 @@ fn generate_rows(
   res
 }
 
-fn write_rows(rows: &Vec<(i64, String, f32, f32, f32, f32, f32, u64)>, index: i64) {
+fn write_rows(rows: Vec<OHLCV>, index: i64) {
   let schema = Schema::new(&format!("agg1d{}", index))
     .add_cols(vec![
       Column::new("ticker", ColumnType::SYMBOL16),
@@ -67,14 +79,14 @@ fn write_rows(rows: &Vec<(i64, String, f32, f32, f32, f32, f32, u64)>, index: i6
       Some(ts) => ts,
       None => 0
     };
-    agg1d.put_timestamp(ts + r.0);
-    agg1d.put_symbol(r.1);
-    agg1d.put_currency(r.2);
-    agg1d.put_currency(r.3);
-    agg1d.put_currency(r.4);
-    agg1d.put_currency(r.5);
-    agg1d.put_currency(r.6);
-    agg1d.put_u64(r.7);
+    agg1d.put_timestamp(ts + r.ts);
+    agg1d.put_symbol(r.symbol);
+    agg1d.put_currency(r.open);
+    agg1d.put_currency(r.high);
+    agg1d.put_currency(r.low);
+    agg1d.put_currency(r.close);
+    agg1d.put_currency(r.close_un);
+    agg1d.put_u64(r.volume);
     agg1d.write();
   }
   agg1d.flush();
@@ -86,7 +98,7 @@ fn write_bench(bencher: &mut Bencher) {
 
   let mut i: i64 = 0;
   bencher.iter(|| {
-    write_rows(&rows.clone(), i);
+    write_rows(rows.clone(), i);
     i += 1;
   });
 }
