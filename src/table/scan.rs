@@ -5,7 +5,7 @@ use crate::{
 use std::{fmt::Debug, cmp::max, convert::TryInto, mem::size_of, path::PathBuf};
 use time::{Date, NumericalDuration, PrimitiveDateTime, date};
 
-static EPOCH: PrimitiveDateTime = date!(1970 - 01 - 01).midnight();
+pub static EPOCH: PrimitiveDateTime = date!(1970 - 01 - 01).midnight();
 
 pub trait Nanoseconds {
   fn nanoseconds(&self) -> i64;

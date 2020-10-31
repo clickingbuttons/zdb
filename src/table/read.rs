@@ -2,6 +2,7 @@ use crate::{
   schema::{Column, ColumnType, Schema},
   table::{Table, TableColumn, TableColumnSymbols}
 };
+use fnv::FnvHashMap;
 use memmap::MmapMut;
 use std::{
   fs::{File, OpenOptions},
@@ -61,8 +62,14 @@ pub fn read_column_symbols(data_path: &PathBuf, schema: &Schema) -> Vec<TableCol
 
   for column in &schema.columns {
     let path = get_symbols_path(&data_path, &column);
+    let symbols = get_column_symbols(&path, &column);
+    let mut symbol_nums = FnvHashMap::with_capacity_and_hasher(get_capacity(&column), Default::default());
+    for (i, symbol) in symbols.iter().enumerate() {
+      symbol_nums.insert(symbol.clone(), i + 1);
+    }
     let col_syms = TableColumnSymbols {
-      symbols: get_column_symbols(&path, &column),
+      symbols,
+      symbol_nums,
       path
     };
     res.push(col_syms);

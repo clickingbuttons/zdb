@@ -104,17 +104,15 @@ impl Table {
     Ok(())
   }
 
-  pub fn get_last_ts(&self) -> i64 {
-    let mut partitions = Vec::from_iter(self.partition_meta.keys().cloned());
-    if partitions.len() == 0 {
-      return 0;
-    }
-    partitions.sort();
+  pub fn get_last_ts(&self) -> Option<i64> {
+    let mut res = None;
 
-    self
-      .partition_meta
-      .get(&partitions[partitions.len() - 1])
-      .unwrap()
-      .to_ts
+    for partition in self.partition_meta.values() {
+      if res == None || partition.to_ts > res.unwrap() {
+        res = Some(partition.to_ts);
+      }
+    }
+
+    res
   }
 }

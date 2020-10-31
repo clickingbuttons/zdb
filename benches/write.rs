@@ -1,3 +1,4 @@
+use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use rand::{prelude::ThreadRng, Rng};
 use zdb::{schema::*, table::*};
 
@@ -40,7 +41,21 @@ fn generate_rows(
   res
 }
 
-fn write_rows(agg1d: &mut Table, rows: &Vec<(i64, String, f32, f32, f32, f32, f32, u64)>) {
+fn write_rows(rows: &Vec<(i64, String, f32, f32, f32, f32, f32, u64)>, index: i64) {
+  let schema = Schema::new(&format!("agg1d{}", index))
+    .add_cols(vec![
+      Column::new("ticker", ColumnType::SYMBOL16),
+      Column::new("open", ColumnType::CURRENCY),
+      Column::new("high", ColumnType::CURRENCY),
+      Column::new("low", ColumnType::CURRENCY),
+      Column::new("close", ColumnType::CURRENCY),
+      Column::new("close_un", ColumnType::CURRENCY),
+      Column::new("volume", ColumnType::U64),
+    ])
+    // Specifiers: https://docs.rs/time/0.2.22/time/index.html#formatting
+    .partition_by("%Y");
+
+  let mut agg1d = Table::create_or_open(schema).expect("Could not open table");
   // Maybe one day we can do this dynamically...
   for r in rows {
     let ts = match agg1d.get_last_ts() {
@@ -60,22 +75,19 @@ fn write_rows(agg1d: &mut Table, rows: &Vec<(i64, String, f32, f32, f32, f32, f3
   agg1d.flush();
 }
 
-fn main() {
-  let schema = Schema::new("agg1d")
-    .add_cols(vec![
-      Column::new("ticker", ColumnType::SYMBOL16),
-      Column::new("open", ColumnType::CURRENCY),
-      Column::new("high", ColumnType::CURRENCY),
-      Column::new("low", ColumnType::CURRENCY),
-      Column::new("close", ColumnType::CURRENCY),
-      Column::new("close_un", ColumnType::CURRENCY),
-      Column::new("volume", ColumnType::U64),
-    ])
-    // Specifiers: https://docs.rs/time/0.2.22/time/index.html#formatting
-    .partition_by("%Y");
-
-  let mut agg1d = Table::create_or_open(schema).expect("Could not open table");
+fn write_bench(c: &mut Criterion) {
   let rows = generate_rows(1_000_000, &mut rand::thread_rng());
 
-  write_rows(&mut agg1d, &rows);
+  let mut i: i64 = 0;
+  c.bench_function("write_rows", move |b| {
+    // This will avoid timing the to_vec call.
+    b.iter_batched(|| rows.clone(), |data| { write_rows(&data, i); i +=1; }, BatchSize::SmallInput)
+  });
 }
+
+criterion_group!{
+  name = benches;
+  config = Criterion::default().sample_size(10);
+  targets = write_bench
+}
+criterion_main!(benches);

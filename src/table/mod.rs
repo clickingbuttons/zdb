@@ -2,6 +2,7 @@ mod meta;
 mod read;
 pub mod scan;
 mod write;
+use fnv::FnvHashMap;
 
 use crate::schema::*;
 // "meta" crate is reserved
@@ -18,6 +19,9 @@ use std::{
 #[derive(Debug)]
 pub struct TableColumnSymbols {
   pub path:    PathBuf,
+  // Good for writing
+  pub symbol_nums: FnvHashMap<String, usize>,
+  // Good for reading
   pub symbols: Vec<String>
 }
 
@@ -101,10 +105,12 @@ impl Table {
     let column_symbols = schema
       .columns
       .iter()
-      .map(|c| TableColumnSymbols {
-        symbols: Vec::<String>::with_capacity(get_capacity(&c)),
-        path:    get_symbols_path(&data_path, &c)
-      })
+      .map(|c|
+        TableColumnSymbols {
+          symbol_nums: FnvHashMap::with_capacity_and_hasher(get_capacity(&c), Default::default()),
+          symbols: Vec::<String>::with_capacity(get_capacity(&c)),
+          path:    get_symbols_path(&data_path, &c)
+        })
       .collect::<Vec<_>>();
 
     let table = Table {

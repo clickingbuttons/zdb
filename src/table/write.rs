@@ -1,10 +1,10 @@
-use crate::{schema::ColumnType, table::Table};
+use crate::{schema::ColumnType, table::{scan::EPOCH, Table}};
 use memmap;
 use std::{
   fs::{create_dir_all, OpenOptions},
   io::Write
 };
-use time::{date, NumericalDuration, PrimitiveDateTime};
+use time::{NumericalDuration, PrimitiveDateTime};
 
 use super::PartitionMeta;
 
@@ -27,7 +27,7 @@ impl Table {
   }
 
   fn get_partition_folder(&self, val: i64) -> String {
-    let time: PrimitiveDateTime = date!(1970 - 01 - 01).midnight() + val.nanoseconds();
+    let time: PrimitiveDateTime = EPOCH + val.nanoseconds();
 
     time.format(&self.schema.partition_by)
   }
@@ -79,12 +79,15 @@ impl Table {
   pub fn put_currency(&mut self, val: f32) { self.put_f32(val) }
 
   pub fn put_symbol(&mut self, val: &str) {
-    let symbols = &mut self.column_symbols[self.column_index].symbols;
-    let index = symbols.iter().position(|s| s == val);
-    let index = match index {
-      Some(i) => i + 1,
+    let column_symbols = &mut self.column_symbols[self.column_index];
+    let symbol_nums = &mut column_symbols.symbol_nums;
+    let symbols = &mut column_symbols.symbols;
+    let val_string = String::from(val);
+    let index = match symbol_nums.get(&val_string) {
+      Some(i) => *i,
       None => {
-        symbols.push(String::from(val));
+        symbols.push(val_string.clone());
+        symbol_nums.insert(val_string, symbols.len());
         symbols.len()
       }
     };
