@@ -18,11 +18,11 @@ use std::{
 
 #[derive(Debug)]
 pub struct TableColumnSymbols {
-  pub path:    PathBuf,
+  pub path:        PathBuf,
   // Good for writing
   pub symbol_nums: FnvHashMap<String, usize>,
   // Good for reading
-  pub symbols: Vec<String>
+  pub symbols:     Vec<String>
 }
 
 #[derive(Debug)]
@@ -34,10 +34,12 @@ pub struct TableColumn {
   pub r#type: ColumnType
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct PartitionMeta {
   from_ts:   i64,
   to_ts:     i64,
+  min_ts:    i64,
+  max_ts:    i64,
   row_count: usize
 }
 
@@ -56,7 +58,8 @@ pub struct Table {
   // Table-wide symbols for columns of type Symbol
   pub column_symbols: Vec<TableColumnSymbols>,
   // Partition metadata
-  partition_meta: HashMap<String, PartitionMeta>
+  partition_meta: HashMap<String, PartitionMeta>,
+  cur_partition_meta: PartitionMeta
 }
 
 fn get_data_path(name: &str) -> PathBuf {
@@ -105,12 +108,11 @@ impl Table {
     let column_symbols = schema
       .columns
       .iter()
-      .map(|c|
-        TableColumnSymbols {
-          symbol_nums: FnvHashMap::with_capacity_and_hasher(get_capacity(&c), Default::default()),
-          symbols: Vec::<String>::with_capacity(get_capacity(&c)),
-          path:    get_symbols_path(&data_path, &c)
-        })
+      .map(|c| TableColumnSymbols {
+        symbol_nums: FnvHashMap::with_capacity_and_hasher(get_capacity(&c), Default::default()),
+        symbols:     Vec::<String>::with_capacity(get_capacity(&c)),
+        path:        get_symbols_path(&data_path, &c)
+      })
       .collect::<Vec<_>>();
 
     let table = Table {
@@ -120,6 +122,13 @@ impl Table {
       schema,
       column_index: 0,
       partition_meta: HashMap::new(),
+      cur_partition_meta: PartitionMeta {
+        from_ts:   0,
+        to_ts:     0,
+        min_ts:    0,
+        max_ts:    0,
+        row_count: 0
+      },
       data_path,
       meta_path
     };
@@ -128,7 +137,7 @@ impl Table {
     Ok(table)
   }
 
-  pub fn open(name: &str) -> std::io::Result<Table> {
+  pub fn open<'b>(name: &'b str) -> std::io::Result<Table> {
     let data_path = get_data_path(name);
     let meta_path = get_meta_path(&data_path);
     let (schema, partition_meta) = read_meta(&meta_path, name);
@@ -141,6 +150,13 @@ impl Table {
       schema,
       column_index: 0,
       partition_meta,
+      cur_partition_meta: PartitionMeta {
+        from_ts:   0,
+        to_ts:     0,
+        min_ts:    0,
+        max_ts:    0,
+        row_count: 0
+      },
       data_path,
       meta_path
     })

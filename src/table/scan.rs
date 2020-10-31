@@ -2,20 +2,8 @@ use crate::{
   schema::{Column, ColumnType},
   table::Table
 };
-use std::{fmt::Debug, cmp::max, convert::TryInto, mem::size_of, path::PathBuf};
-use time::{Date, NumericalDuration, PrimitiveDateTime, date};
-
-pub static EPOCH: PrimitiveDateTime = date!(1970 - 01 - 01).midnight();
-
-pub trait Nanoseconds {
-  fn nanoseconds(&self) -> i64;
-}
-
-impl Nanoseconds for Date {
-  fn nanoseconds(&self) -> i64 {
-    self.midnight().assume_utc().timestamp() * 1_000_000_000
-  }
-}
+use chrono::NaiveDateTime;
+use std::{cmp::max, convert::TryInto, fmt::Debug, mem::size_of, path::PathBuf};
 
 // Important that this fits in single register.
 #[derive(Copy, Clone)]
@@ -36,9 +24,9 @@ impl Debug for RowValue<'_> {
 }
 
 impl RowValue<'_> {
-  pub fn get_timestamp(&self) -> PrimitiveDateTime {
+  pub fn get_timestamp(&self) -> NaiveDateTime {
     let nanoseconds = unsafe { self.i64 };
-    EPOCH + nanoseconds.nanoseconds()
+    NaiveDateTime::from_timestamp(nanoseconds / 1_000_000, (nanoseconds % 1_000_000) as u32)
   }
 
   pub fn get_currency(&self) -> f32 { unsafe { self.f32 } }
@@ -94,8 +82,7 @@ macro_rules! read_bytes {
   }};
 }
 
-// filters: Vec<(String, &FnMut())>
-impl<'a> Table {
+impl Table {
   fn get_union(&self, columns: &Vec<&str>) -> Vec<Column> {
     columns
       .iter()
@@ -121,8 +108,9 @@ impl<'a> Table {
     &self.column_symbols[symbol_column].symbols[symbol_index as usize - 1]
   }
 
-  pub fn scan<F>(&'a self, from_ts: i64, to_ts: i64, columns: Vec<&str>, mut accumulator: F)
-    where F: FnMut(Vec<RowValue<'a>>)
+  pub fn scan<F>(&self, from_ts: i64, to_ts: i64, columns: Vec<&str>, mut accumulator: F)
+  where
+    F: FnMut(Vec<RowValue>)
   {
     let mut partitions = self
       .partition_meta

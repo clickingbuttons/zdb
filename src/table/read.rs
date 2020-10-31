@@ -63,7 +63,8 @@ pub fn read_column_symbols(data_path: &PathBuf, schema: &Schema) -> Vec<TableCol
   for column in &schema.columns {
     let path = get_symbols_path(&data_path, &column);
     let symbols = get_column_symbols(&path, &column);
-    let mut symbol_nums = FnvHashMap::with_capacity_and_hasher(get_capacity(&column), Default::default());
+    let mut symbol_nums =
+      FnvHashMap::with_capacity_and_hasher(get_capacity(&column), Default::default());
     for (i, symbol) in symbols.iter().enumerate() {
       symbol_nums.insert(symbol.clone(), i + 1);
     }
@@ -81,7 +82,7 @@ pub fn read_column_symbols(data_path: &PathBuf, schema: &Schema) -> Vec<TableCol
 fn get_col_path(data_path: &PathBuf, column: &Column) -> PathBuf {
   let mut path = data_path.clone();
   path.push(&column.name);
-  path.set_extension(String::from(format!("{:?}", column.r#type).to_lowercase()));
+  path.set_extension(String::from(format!("{}", column.r#type).to_lowercase()));
   path
 }
 

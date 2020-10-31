@@ -1,4 +1,8 @@
-use std::{fmt, str::FromStr};
+use std::{
+  fmt,
+  fmt::{Display, Formatter},
+  str::FromStr
+};
 
 #[derive(Debug, Copy, Clone)]
 pub enum ColumnType {
@@ -36,6 +40,24 @@ impl FromStr for ColumnType {
   }
 }
 
+impl Display for ColumnType {
+  fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    match self {
+      ColumnType::TIMESTAMP => f.write_str("TIMESTAMP"),
+      ColumnType::CURRENCY => f.write_str("CURRENCY"),
+      ColumnType::SYMBOL8 => f.write_str("SYMBOL8"),
+      ColumnType::SYMBOL16 => f.write_str("SYMBOL16"),
+      ColumnType::SYMBOL32 => f.write_str("SYMBOL32"),
+      ColumnType::I32 => f.write_str("I32"),
+      ColumnType::U32 => f.write_str("U32"),
+      ColumnType::F32 => f.write_str("F32"),
+      ColumnType::I64 => f.write_str("I64"),
+      ColumnType::U64 => f.write_str("U64"),
+      ColumnType::F64 => f.write_str("F64")
+    }
+  }
+}
+
 #[derive(Debug, Clone)]
 pub struct Column {
   pub name:   String,
@@ -51,10 +73,43 @@ impl Column {
   }
 }
 
+#[derive(Debug)]
+pub enum PartitionBy {
+  None,
+  Year,
+  Month,
+  Day
+}
+
+impl FromStr for PartitionBy {
+  type Err = ();
+
+  fn from_str(input: &str) -> Result<PartitionBy, Self::Err> {
+    match input {
+      "None" => Ok(PartitionBy::None),
+      "Year" => Ok(PartitionBy::Year),
+      "Month" => Ok(PartitionBy::Month),
+      "Day" => Ok(PartitionBy::Day),
+      _ => Err(())
+    }
+  }
+}
+
+impl Display for PartitionBy {
+  fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    match self {
+      PartitionBy::None => f.write_str("None"),
+      PartitionBy::Year => f.write_str("Year"),
+      PartitionBy::Month => f.write_str("Month"),
+      PartitionBy::Day => f.write_str("Day")
+    }
+  }
+}
+
 pub struct Schema {
   pub name:         String,
   pub columns:      Vec<Column>,
-  pub partition_by: String
+  pub partition_by: PartitionBy
 }
 
 impl fmt::Debug for Schema {
@@ -79,7 +134,7 @@ impl<'a> Schema {
     Schema {
       name:         name.to_owned(),
       columns:      vec![Column::new("ts", ColumnType::TIMESTAMP)],
-      partition_by: String::new()
+      partition_by: PartitionBy::None
     }
   }
 
@@ -93,8 +148,8 @@ impl<'a> Schema {
     self
   }
 
-  pub fn partition_by(mut self, partition_by: &'a str) -> Self {
-    self.partition_by = partition_by.to_owned();
+  pub fn partition_by(mut self, partition_by: PartitionBy) -> Self {
+    self.partition_by = partition_by;
     self
   }
 }

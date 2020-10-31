@@ -1,5 +1,5 @@
 use crate::{
-  schema::{Column, ColumnType, Schema},
+  schema::{Column, ColumnType, PartitionBy, Schema},
   table::{PartitionMeta, Table}
 };
 use std::{
@@ -33,7 +33,7 @@ pub fn read_meta(meta_path: &PathBuf, name: &str) -> (Schema, HashMap<String, Pa
           r#type: ColumnType::from_str(split.next().unwrap()).unwrap()
         });
       } else if section == "partition_by" {
-        schema.partition_by = String::from(my_line);
+        schema.partition_by = PartitionBy::from_str(&my_line).unwrap();
       } else if section.starts_with("partitions.") {
         let partition = section[11..section.len()].to_string();
 
@@ -46,6 +46,14 @@ pub fn read_meta(meta_path: &PathBuf, name: &str) -> (Schema, HashMap<String, Pa
         let to_ts = to_ts_str
           .parse::<i64>()
           .expect(&format!("Invalid to_ts {}", to_ts_str));
+        let min_ts_str = split.next().unwrap();
+        let min_ts = min_ts_str
+          .parse::<i64>()
+          .expect(&format!("Invalid min_ts {}", min_ts_str));
+        let max_ts_str = split.next().unwrap();
+        let max_ts = max_ts_str
+          .parse::<i64>()
+          .expect(&format!("Invalid max_ts {}", max_ts_str));
         let row_count_str = split.next().unwrap();
         let row_count = row_count_str
           .parse::<usize>()
@@ -54,6 +62,8 @@ pub fn read_meta(meta_path: &PathBuf, name: &str) -> (Schema, HashMap<String, Pa
         partition_meta.insert(partition, PartitionMeta {
           from_ts,
           to_ts,
+          min_ts,
+          max_ts,
           row_count
         });
       }
@@ -77,19 +87,24 @@ impl Table {
       .columns
       .iter()
       .skip(1)
-      .map(|c| format!("{}/{:?}", c.name, c.r#type))
+      .map(|c| format!("{}/{}", c.name, c.r#type))
       .collect::<Vec<_>>()
       .join("\n");
     meta_text += "\n\n[partition_by]\n";
-    meta_text += &self.schema.partition_by;
+    meta_text += &format!("{}", self.schema.partition_by);
     meta_text += "\n\n";
     let mut partitions = Vec::from_iter(self.partition_meta.keys().cloned());
     partitions.sort();
     for partition in partitions {
       let partition_meta = self.partition_meta.get(&partition).unwrap();
       meta_text += &format!(
-        "[partitions.{}]\n{}/{}/{}\n",
-        &partition, partition_meta.from_ts, partition_meta.to_ts, partition_meta.row_count,
+        "[partitions.{}]\n{}/{}/{}/{}/{}\n",
+        &partition,
+        partition_meta.from_ts,
+        partition_meta.to_ts,
+        partition_meta.min_ts,
+        partition_meta.max_ts,
+        partition_meta.row_count,
       );
     }
 

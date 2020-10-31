@@ -1,6 +1,10 @@
-use time::{date,Date,Duration,Weekday::{Monday,Saturday,Sunday,Thursday}};
+use chrono::{
+  prelude::*,
+  Duration, NaiveDate,
+  Weekday::{Mon, Sat, Sun, Thu}
+};
 
-fn get_easter(year: i32) -> Date {
+fn get_easter(year: i32) -> NaiveDate {
   let aa = year % 19;
   let bb = year / 100;
   let cc = year % 100;
@@ -16,37 +20,12 @@ fn get_easter(year: i32) -> Date {
   let month = (hh + ll - 7 * mm + 114) / 31;
   let day = (hh + ll - 7 * mm + 114) % 31 + 1;
 
-  Date::try_from_ymd(year, month as u8, day as u8).unwrap()
+  NaiveDate::from_ymd(year, month as u32, day as u32)
 }
 
-fn is_weekend(date: &Date) -> bool {
-  date.weekday() == Saturday || date.weekday() == Sunday
-}
+fn is_weekend(date: &NaiveDate) -> bool { date.weekday() == Sat || date.weekday() == Sun }
 
-static DISASTERS: &'static [Date] = &[
-  // Ronald Reagan dead at 93
-  // https://money.cnn.com/2004/06/11/markets/reagan_closings/index.htm
-  date!(2004-6-11),
-  // National Day of Mourning for Gerald R. Ford
-  // https://georgewbush-whitehouse.archives.gov/news/releases/2006/12/20061228-2.html
-  date!(2007-01-02),
-  // Hurricane Sandy
-  date!(2012-10-29),
-  date!(2012-10-30),
-  // George H.W. Bush dead at 94
-  date!(2018-12-05),
-];
-
-fn nth_weekday(year: i32, month: u8, week_num: u8, week_day: u8) -> Date {
-  let mut res = Date::try_from_ymd(year, month, 1).unwrap();
-  let dif = week_day as i8 - res.weekday() as i8;
-  let dif = if dif < 0 { 7 + dif } else { dif };
-  res += Duration::days(dif as i64);
-  res += Duration::weeks(week_num as i64 - 1);
-  res
-}
-
-pub fn is_market_open(date: &Date) -> bool {
+pub fn is_market_open(date: &NaiveDate) -> bool {
   let year = date.year();
 
   // Weekend
@@ -55,7 +34,7 @@ pub fn is_market_open(date: &Date) -> bool {
   }
 
   // New year's
-  let mut new_year = Date::try_from_ymd(year, 1, 1).unwrap();
+  let mut new_year = NaiveDate::from_ymd(year, 1, 1);
   while is_weekend(&new_year) {
     new_year += Duration::days(1);
   }
@@ -63,13 +42,13 @@ pub fn is_market_open(date: &Date) -> bool {
     return false;
   }
 
-  // MLK day on 3rd Monday of January
-  if date == &nth_weekday(year, 1, 3, Monday as u8) {
+  // MLK day on 3rd Mon of January
+  if date == &NaiveDate::from_weekday_of_month(year, 1, Mon, 3) {
     return false;
   }
 
-  // Washington's Birthday on 3rd Monday of February
-  if date == &nth_weekday(year, 2, 3, Monday as u8) {
+  // Washington's Birthday on 3rd Mon of February
+  if date == &NaiveDate::from_weekday_of_month(year, 2, Mon, 3) {
     return false;
   }
 
@@ -81,8 +60,8 @@ pub fn is_market_open(date: &Date) -> bool {
   }
 
   // Memorial Day
-  let mut memorial_day = Date::try_from_ymd(year, 5, 31).unwrap();
-  while memorial_day.weekday() != Monday {
+  let mut memorial_day = NaiveDate::from_ymd(year, 5, 31);
+  while memorial_day.weekday() != Mon {
     memorial_day -= Duration::days(1);
   }
   if date == &memorial_day {
@@ -90,40 +69,52 @@ pub fn is_market_open(date: &Date) -> bool {
   }
 
   // Independence Day
-  let mut independence_day = Date::try_from_ymd(year, 7, 4).unwrap();
-  if independence_day.weekday() == Saturday {
+  let mut independence_day = NaiveDate::from_ymd(year, 7, 4);
+  if independence_day.weekday() == Sat {
     independence_day -= Duration::days(1);
-  }
-  else if independence_day.weekday() == Sunday {
+  } else if independence_day.weekday() == Sun {
     independence_day += Duration::days(1);
   }
   if date == &independence_day {
     return false;
   }
 
-  // Labor Day on first Monday of September
-  if date == &nth_weekday(year, 9, 1, Monday as u8) {
+  // Labor Day on first Mon of September
+  if date == &NaiveDate::from_weekday_of_month(year, 9, Mon, 1) {
     return false;
   }
 
-  // Thanksgiving on fourth Thursday of November
-  if date == &nth_weekday(year, 11, 4, Thursday as u8) {
+  // Thanksgiving on fourth Thu of November
+  if date == &NaiveDate::from_weekday_of_month(year, 11, Thu, 4) {
     return false;
   }
 
   // Christmas
-  let mut christmas = Date::try_from_ymd(year, 12, 25).unwrap();
-  if christmas.weekday() == Saturday {
+  let mut christmas = NaiveDate::from_ymd(year, 12, 25);
+  if christmas.weekday() == Sat {
     christmas -= Duration::days(1);
-  }
-  else if christmas.weekday() == Sunday {
+  } else if christmas.weekday() == Sun {
     christmas += Duration::days(1);
   }
   if date == &christmas {
     return false;
   }
 
-  if DISASTERS.contains(date) {
+  let disasters = &[
+    // Ronald Reagan dead at 93
+    // https://money.cnn.com/2004/06/11/markets/reagan_closings/index.htm
+    NaiveDate::from_ymd(2004, 6, 11),
+    // National Day of Mourning for Gerald R. Ford
+    // https://georgewbush-whitehouse.archives.gov/news/releases/2006/12/20061228-2.html
+    NaiveDate::from_ymd(2007, 1, 2),
+    // Hurricane Sandy
+    NaiveDate::from_ymd(2012, 10, 29),
+    NaiveDate::from_ymd(2012, 10, 30),
+    // George H.W. Bush dead at 94
+    NaiveDate::from_ymd(2018, 12, 5)
+  ];
+
+  if disasters.contains(date) {
     return false;
   }
 
@@ -132,41 +123,56 @@ pub fn is_market_open(date: &Date) -> bool {
 
 #[cfg(test)]
 mod tests {
-  use time::{date,Weekday::{Monday,Thursday}};
-  use crate::calendar::us_equity::{get_easter, is_market_open, nth_weekday};
+  use crate::calendar::us_equity::{get_easter, is_market_open};
+  use chrono::{
+    NaiveDate,
+    Weekday::{Mon, Thu}
+  };
 
   #[test]
   fn mlk() {
-    assert_eq!(nth_weekday(2004, 1, 3, Monday as u8), date!(2004-01-19));
+    assert_eq!(
+      NaiveDate::from_weekday_of_month(2004, 1, Mon, 3),
+      NaiveDate::from_ymd(2004, 01, 19)
+    );
   }
 
   #[test]
   fn washington() {
-    assert_eq!(nth_weekday(2004, 2, 3, Monday as u8), date!(2004-02-16));
+    assert_eq!(
+      NaiveDate::from_weekday_of_month(2004, 2, Mon, 3),
+      NaiveDate::from_ymd(2004, 02, 16)
+    );
   }
 
   #[test]
   fn easter() {
-    assert_eq!(get_easter(2004), date!(2004-04-11));
+    assert_eq!(get_easter(2004), NaiveDate::from_ymd(2004, 04, 11));
   }
 
   #[test]
   fn good_friday() {
-    assert_eq!(is_market_open(&date!(2004-04-09)), false);
+    assert_eq!(is_market_open(&NaiveDate::from_ymd(2004, 04, 09)), false);
   }
 
   #[test]
   fn labor() {
-    assert_eq!(nth_weekday(2004, 9, 1, Monday as u8), date!(2004-9-6));
+    assert_eq!(
+      NaiveDate::from_weekday_of_month(2004, 9, Mon, 1),
+      NaiveDate::from_ymd(2004, 9, 6)
+    );
   }
 
   #[test]
   fn thanksgiving() {
-    assert_eq!(nth_weekday(2004, 11, 4, Thursday as u8), date!(2004-11-25));
+    assert_eq!(
+      NaiveDate::from_weekday_of_month(2004, 11, Thu, 4),
+      NaiveDate::from_ymd(2004, 11, 25)
+    );
   }
 
   #[test]
   fn christmas() {
-    assert_eq!(is_market_open(&date!(2004-12-25)), false);
+    assert_eq!(is_market_open(&NaiveDate::from_ymd(2004, 12, 25)), false);
   }
 }
