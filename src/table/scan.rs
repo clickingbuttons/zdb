@@ -1,4 +1,8 @@
-use crate::{schema::{Column, ColumnType}, table::Table};
+use crate::{
+  calendar::ToNaiveDateTime,
+  schema::{Column, ColumnType},
+  table::Table
+};
 use chrono::NaiveDateTime;
 use std::{cmp::max, convert::TryInto, fmt::Debug, mem::size_of, path::PathBuf};
 
@@ -23,7 +27,7 @@ impl Debug for RowValue<'_> {
 impl RowValue<'_> {
   pub fn get_timestamp(&self) -> NaiveDateTime {
     let nanoseconds = unsafe { self.i64 };
-    NaiveDateTime::from_timestamp(nanoseconds / 1_000_000_000, (nanoseconds % 1_000_000_000) as u32)
+    nanoseconds.to_naive_date_time()
   }
 
   pub fn get_currency(&self) -> f32 { unsafe { self.f32 } }
@@ -80,7 +84,7 @@ macro_rules! read_bytes {
 }
 
 struct TableColumn<'a> {
-  column: Column,
+  column:  Column,
   symbols: &'a Vec<String>
 }
 
@@ -96,7 +100,7 @@ impl Table {
           .position(|col| &col.name == col_name)
           .expect(&format!("Column {} does not exist", col_name));
         TableColumn {
-          column: self.schema.columns[index].clone(),
+          column:  self.schema.columns[index].clone(),
           symbols: &self.column_symbols[index].symbols
         }
       })
@@ -145,17 +149,17 @@ impl Table {
             }
             ColumnType::SYMBOL8 => {
               let symbol_index = read_bytes!(u8, data, row_index) as usize;
-              let sym = &columns[col_index].symbols[symbol_index as usize - 1];
+              let sym = &columns[col_index].symbols[symbol_index - 1];
               row.push(RowValue { sym });
             }
             ColumnType::SYMBOL16 => {
               let symbol_index = read_bytes!(u16, data, row_index) as usize;
-              let sym = &columns[col_index].symbols[symbol_index as usize - 1];
+              let sym = &columns[col_index].symbols[symbol_index - 1];
               row.push(RowValue { sym });
             }
             ColumnType::SYMBOL32 => {
               let symbol_index = read_bytes!(u32, data, row_index) as usize;
-              let sym = &columns[col_index].symbols[symbol_index as usize - 1];
+              let sym = &columns[col_index].symbols[symbol_index - 1];
               row.push(RowValue { sym });
             }
             ColumnType::I32 => {

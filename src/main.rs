@@ -1,9 +1,12 @@
 use chrono::NaiveDate;
 use rand::{prelude::ThreadRng, Rng};
-use zdb::{schema::*, table::{Table, scan::RowValue}};
+use zdb::{
+  schema::*,
+  table::{scan::RowValue, Table}
+};
+use zdb::test_symbols::SYMBOLS;
 
-static ALPHABET: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-static ROW_COUNT: usize = 1_000;
+static ROW_COUNT: usize = 20_000_000;
 
 struct OHLCV {
   ts:       i64,
@@ -16,20 +19,16 @@ struct OHLCV {
   volume:   u64
 }
 
-fn generate_symbol(num_chars: usize, rng: &mut ThreadRng) -> String {
-  let mut res = String::with_capacity(num_chars);
-  for _ in 0..num_chars {
-    let rand_index = rng.gen_range(0, ALPHABET.len());
-    res += &ALPHABET[rand_index..rand_index + 1];
-  }
+fn generate_symbol(rng: &mut ThreadRng) -> String {
+  let rand_index = rng.gen_range(0, SYMBOLS.len());
 
-  res
+  String::from(SYMBOLS[rand_index])
 }
 
 fn generate_row(ts: i64, rng: &mut ThreadRng) -> OHLCV {
   OHLCV {
     ts,
-    sym: generate_symbol(rng.gen_range(1, 5), rng),
+    sym: generate_symbol(rng),
     open: rng.gen(),
     high: rng.gen(),
     low: rng.gen(),
@@ -43,7 +42,7 @@ fn generate_rows(row_count: usize, rng: &mut ThreadRng) -> Vec<OHLCV> {
   let mut res = Vec::with_capacity(row_count);
 
   for i in 0..row_count {
-    let row = generate_row((i * 1_000) as i64, rng);
+    let row = generate_row((i * 100) as i64, rng);
     res.push(row);
   }
 
@@ -71,19 +70,19 @@ fn write_rows(agg1d: &mut Table, rows: Vec<OHLCV>) {
 }
 
 fn main() {
+  let schema = Schema::new("agg1m")
+    .add_cols(vec![
+      Column::new("ticker", ColumnType::SYMBOL16),
+      Column::new("open", ColumnType::CURRENCY),
+      Column::new("high", ColumnType::CURRENCY),
+      Column::new("low", ColumnType::CURRENCY),
+      Column::new("close", ColumnType::CURRENCY),
+      Column::new("close_un", ColumnType::CURRENCY),
+      Column::new("volume", ColumnType::U64),
+    ])
+    .partition_by(PartitionBy::Day);
+  let table_name = schema.name.clone();
   {
-    let schema = Schema::new("agg1d")
-      .add_cols(vec![
-        Column::new("ticker", ColumnType::SYMBOL16),
-        Column::new("open", ColumnType::CURRENCY),
-        Column::new("high", ColumnType::CURRENCY),
-        Column::new("low", ColumnType::CURRENCY),
-        Column::new("close", ColumnType::CURRENCY),
-        Column::new("close_un", ColumnType::CURRENCY),
-        Column::new("volume", ColumnType::U64),
-      ])
-      .partition_by(PartitionBy::Year);
-
     let mut agg1d = Table::create_or_open(schema).expect("Could not create/open table");
     println!("Generating {} rows", ROW_COUNT);
     let rows = generate_rows(ROW_COUNT, &mut rand::thread_rng());
@@ -91,14 +90,17 @@ fn main() {
     println!("Writing rows");
     write_rows(&mut agg1d, rows);
   }
-  
+
   {
-    let agg1d = Table::open("agg1d").expect("Could not open table");
+    println!("Scanning rows");
+    let agg1d = Table::open(&table_name).expect("Could not open table");
     let mut sum = 0.0;
 
     agg1d.scan(
       0,
-      NaiveDate::from_ymd(1972, 1, 1).and_hms(0, 0, 0).timestamp_nanos(),
+      NaiveDate::from_ymd(1972, 1, 1)
+        .and_hms(0, 0, 0)
+        .timestamp_nanos(),
       vec!["ts", "ticker", "close", "volume"],
       |row: Vec<RowValue>| {
         if row[1].get_symbol() == "TX" {

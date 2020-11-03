@@ -128,7 +128,11 @@ impl Table {
   }
 
   pub fn get_last_ts(&self) -> Option<i64> {
-    let mut max_ts = if self.cur_partition_meta.row_count == 0 { None } else { Some(self.cur_partition_meta.to_ts) };
+    let mut max_ts = if self.cur_partition_meta.row_count == 0 {
+      None
+    } else {
+      Some(self.cur_partition_meta.to_ts)
+    };
     for partition_meta in self.partition_meta.values() {
       if max_ts.is_none() || partition_meta.to_ts > max_ts.unwrap() {
         max_ts = Some(partition_meta.to_ts);

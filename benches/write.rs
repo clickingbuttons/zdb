@@ -9,14 +9,14 @@ static ALPHABET: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 #[derive(Debug, Clone)]
 struct OHLCV {
-  ts: i64,
-  symbol: String,
-  open: f32,
-  high: f32,
-  low: f32,
-  close: f32,
+  ts:       i64,
+  symbol:   String,
+  open:     f32,
+  high:     f32,
+  low:      f32,
+  close:    f32,
   close_un: f32,
-  volume: u64
+  volume:   u64
 }
 
 fn generate_symbol(num_chars: usize, rng: &mut ThreadRng) -> String {
@@ -29,10 +29,7 @@ fn generate_symbol(num_chars: usize, rng: &mut ThreadRng) -> String {
   res
 }
 
-fn generate_row(
-  ts: i64,
-  rng: &mut ThreadRng
-) -> OHLCV {
+fn generate_row(ts: i64, rng: &mut ThreadRng) -> OHLCV {
   OHLCV {
     ts,
     symbol: generate_symbol(rng.gen_range(1, 5), rng),
@@ -45,10 +42,7 @@ fn generate_row(
   }
 }
 
-fn generate_rows(
-  row_count: usize,
-  rng: &mut ThreadRng
-) -> Vec<OHLCV> {
+fn generate_rows(row_count: usize, rng: &mut ThreadRng) -> Vec<OHLCV> {
   let mut res = Vec::with_capacity(row_count);
 
   for i in 0..row_count {
@@ -74,7 +68,7 @@ fn write_rows(rows: Vec<OHLCV>, index: i64) {
 
   let mut agg1d = Table::create_or_open(schema).expect("Could not open table");
   // Maybe one day we can do this dynamically...
-  for r in rows {
+  for r in rows.drain(..) {
     let ts = match agg1d.get_last_ts() {
       Some(ts) => ts,
       None => 0
@@ -93,7 +87,7 @@ fn write_rows(rows: Vec<OHLCV>, index: i64) {
 }
 
 #[bench]
-fn write_bench(bencher: &mut Bencher) {
+fn write_agg1d_bench(bencher: &mut Bencher) {
   let rows = generate_rows(1_000, &mut rand::thread_rng());
 
   let mut i: i64 = 0;

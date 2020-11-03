@@ -1,8 +1,9 @@
 use crate::{
+  calendar::ToNaiveDateTime,
   schema::{ColumnType, PartitionBy},
   table::Table
 };
-use chrono::{Datelike, Duration, MAX_DATETIME, MIN_DATETIME, NaiveDate, NaiveDateTime};
+use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime, MAX_DATETIME, MIN_DATETIME};
 use memmap;
 use std::{
   fs::{create_dir_all, OpenOptions},
@@ -30,8 +31,7 @@ impl Table {
   }
 
   fn get_partition_folder(&self, val: i64) -> String {
-    let time: NaiveDateTime =
-      NaiveDateTime::from_timestamp(val / 1_000_000_000, (val % 1_000_000_000) as u32);
+    let time: NaiveDateTime = val.to_naive_date_time();
 
     // Specifiers: https://docs.rs/chrono/0.3.1/chrono/format/strftime/index.html
     match self.schema.partition_by {
@@ -61,9 +61,7 @@ impl Table {
         }
         NaiveDate::from_ymd(year, month, 1).and_hms(0, 0, 0)
       }
-      PartitionBy::Day => {
-        date + Duration::days(1)
-      }
+      PartitionBy::Day => date + Duration::days(1)
     }
     .timestamp_nanos()
   }
@@ -95,7 +93,7 @@ impl Table {
             meta.clone()
           }
           None => {
-            let date = NaiveDateTime::from_timestamp(val / 1_000_000_000, (val % 1_000_000_000) as u32);
+            let date = val.to_naive_date_time();
             let min_ts = self.get_partition_ts(date, 0);
             let max_ts = self.get_partition_ts(date, 1);
             PartitionMeta {
