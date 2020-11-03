@@ -1,7 +1,4 @@
-use crate::{
-  schema::{Column, ColumnType},
-  table::Table
-};
+use crate::{schema::{Column, ColumnType}, table::Table};
 use chrono::NaiveDateTime;
 use std::{cmp::max, convert::TryInto, fmt::Debug, mem::size_of, path::PathBuf};
 
@@ -82,30 +79,28 @@ macro_rules! read_bytes {
   }};
 }
 
+struct TableColumn<'a> {
+  column: Column,
+  symbols: &'a Vec<String>
+}
+
 impl Table {
-  fn get_union(&self, columns: &Vec<&str>) -> Vec<Column> {
+  fn get_union<'a>(&'a self, columns: &Vec<&str>) -> Vec<TableColumn<'a>> {
     columns
       .iter()
       .map(|col_name| {
-        self
+        let index = self
           .schema
           .columns
           .iter()
-          .find(|col| &col.name == col_name)
-          .expect(&format!("Column {} does not exist", col_name))
-          .clone()
+          .position(|col| &col.name == col_name)
+          .expect(&format!("Column {} does not exist", col_name));
+        TableColumn {
+          column: self.schema.columns[index].clone(),
+          symbols: &self.column_symbols[index].symbols
+        }
       })
       .collect::<Vec<_>>()
-  }
-
-  fn get_symbol(&self, symbol_index: usize, col_name: &String) -> &String {
-    let symbol_column = self
-      .columns
-      .iter()
-      .position(|col| &col.name == col_name)
-      .expect(&format!("Column {} does not exist", col_name));
-
-    &self.column_symbols[symbol_column].symbols[symbol_index as usize - 1]
   }
 
   pub fn scan<F>(&self, from_ts: i64, to_ts: i64, columns: Vec<&str>, mut accumulator: F)
@@ -116,7 +111,7 @@ impl Table {
       .partition_meta
       .iter()
       .filter(|(_data_folder, partition_meta)| {
-        partition_meta.from_ts > from_ts && partition_meta.from_ts < to_ts
+        partition_meta.from_ts >= from_ts && partition_meta.from_ts < to_ts
       })
       .collect::<Vec<_>>();
     partitions.sort_by_key(|(_data_folder, partition_meta)| partition_meta.from_ts);
@@ -130,7 +125,7 @@ impl Table {
 
       let data_columns = columns
         .iter()
-        .map(|column| self.open_column(&partition_path, row_count, column))
+        .map(|column| self.open_column(&partition_path, row_count, &column.column))
         .collect::<Vec<_>>();
       for row_index in 0..row_count {
         let mut row = Vec::<RowValue>::with_capacity(data_columns.len());
@@ -150,17 +145,17 @@ impl Table {
             }
             ColumnType::SYMBOL8 => {
               let symbol_index = read_bytes!(u8, data, row_index) as usize;
-              let sym = self.get_symbol(symbol_index, &table_column.name);
+              let sym = &columns[col_index].symbols[symbol_index as usize - 1];
               row.push(RowValue { sym });
             }
             ColumnType::SYMBOL16 => {
               let symbol_index = read_bytes!(u16, data, row_index) as usize;
-              let sym = self.get_symbol(symbol_index, &table_column.name);
+              let sym = &columns[col_index].symbols[symbol_index as usize - 1];
               row.push(RowValue { sym });
             }
             ColumnType::SYMBOL32 => {
               let symbol_index = read_bytes!(u32, data, row_index) as usize;
-              let sym = self.get_symbol(symbol_index, &table_column.name);
+              let sym = &columns[col_index].symbols[symbol_index as usize - 1];
               row.push(RowValue { sym });
             }
             ColumnType::I32 => {

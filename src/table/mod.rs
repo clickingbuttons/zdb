@@ -58,7 +58,7 @@ pub struct Table {
   // Table-wide symbols for columns of type Symbol
   pub column_symbols: Vec<TableColumnSymbols>,
   // Partition metadata
-  partition_meta: HashMap<String, PartitionMeta>,
+  pub partition_meta: HashMap<String, PartitionMeta>,
   cur_partition_meta: PartitionMeta
 }
 

@@ -2,7 +2,7 @@ use crate::{
   schema::{ColumnType, PartitionBy},
   table::Table
 };
-use chrono::{Datelike, NaiveDate, NaiveDateTime, MAX_DATETIME, MIN_DATETIME};
+use chrono::{Datelike, Duration, MAX_DATETIME, MIN_DATETIME, NaiveDate, NaiveDateTime};
 use memmap;
 use std::{
   fs::{create_dir_all, OpenOptions},
@@ -53,10 +53,16 @@ impl Table {
       }
       PartitionBy::Year => NaiveDate::from_ymd(date.year() + offset as i32, 1, 1).and_hms(0, 0, 0),
       PartitionBy::Month => {
-        NaiveDate::from_ymd(date.year(), date.month() + offset, 1).and_hms(0, 0, 0)
+        let mut year = date.year();
+        let mut month = date.month() + offset;
+        if month > 12 || month < 1 {
+          month = month % 12;
+          year += offset as i32;
+        }
+        NaiveDate::from_ymd(year, month, 1).and_hms(0, 0, 0)
       }
       PartitionBy::Day => {
-        NaiveDate::from_ymd(date.year(), date.month(), date.day() + offset).and_hms(0, 0, 0)
+        date + Duration::days(1)
       }
     }
     .timestamp_nanos()
@@ -70,11 +76,7 @@ impl Table {
         || self.cur_partition_meta.row_count == 0
       {
         // Save old meta
-        if self.cur_partition_meta.row_count > 0 {
-          self
-            .partition_meta
-            .insert(self.data_folder.clone(), self.cur_partition_meta);
-        }
+        self.save_cur_partition_meta();
         let partition_folder = self.get_partition_folder(val);
         self.data_folder = partition_folder;
         let mut data_path = self.data_path.clone();
@@ -90,7 +92,6 @@ impl Table {
                 val, meta.to_ts
               ));
             }
-            meta.to_ts = val;
             meta.clone()
           }
           None => {
@@ -107,6 +108,7 @@ impl Table {
           }
         };
       }
+      self.cur_partition_meta.to_ts = val;
     }
     self.put_i64(val);
   }
@@ -223,6 +225,7 @@ impl Table {
       ));
     }
     self.write_symbols();
+    self.save_cur_partition_meta();
     self
       .write_meta()
       .expect("Could not write meta file with row_count");

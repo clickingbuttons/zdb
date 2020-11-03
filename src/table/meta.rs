@@ -74,6 +74,14 @@ pub fn read_meta(meta_path: &PathBuf, name: &str) -> (Schema, HashMap<String, Pa
 }
 
 impl Table {
+  pub fn save_cur_partition_meta(&mut self) {
+    if self.cur_partition_meta.row_count > 0 {
+      self
+        .partition_meta
+        .insert(self.data_folder.clone(), self.cur_partition_meta);
+    }
+  }
+
   pub fn write_meta(&self) -> std::io::Result<()> {
     let mut f = OpenOptions::new()
       .write(true)
@@ -120,14 +128,13 @@ impl Table {
   }
 
   pub fn get_last_ts(&self) -> Option<i64> {
-    let mut res = None;
-
-    for partition in self.partition_meta.values() {
-      if res == None || partition.to_ts > res.unwrap() {
-        res = Some(partition.to_ts);
+    let mut max_ts = if self.cur_partition_meta.row_count == 0 { None } else { Some(self.cur_partition_meta.to_ts) };
+    for partition_meta in self.partition_meta.values() {
+      if max_ts.is_none() || partition_meta.to_ts > max_ts.unwrap() {
+        max_ts = Some(partition_meta.to_ts);
       }
     }
 
-    res
+    max_ts
   }
 }

@@ -1,8 +1,9 @@
+use chrono::NaiveDate;
 use rand::{prelude::ThreadRng, Rng};
-use zdb::{schema::*, table::*};
+use zdb::{schema::*, table::{Table, scan::RowValue}};
 
 static ALPHABET: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-static ROW_COUNT: usize = 1_000_000;
+static ROW_COUNT: usize = 1_000;
 
 struct OHLCV {
   ts:       i64,
@@ -70,22 +71,41 @@ fn write_rows(agg1d: &mut Table, rows: Vec<OHLCV>) {
 }
 
 fn main() {
-  let schema = Schema::new("agg1d")
-    .add_cols(vec![
-      Column::new("ticker", ColumnType::SYMBOL16),
-      Column::new("open", ColumnType::CURRENCY),
-      Column::new("high", ColumnType::CURRENCY),
-      Column::new("low", ColumnType::CURRENCY),
-      Column::new("close", ColumnType::CURRENCY),
-      Column::new("close_un", ColumnType::CURRENCY),
-      Column::new("volume", ColumnType::U64),
-    ])
-    .partition_by(PartitionBy::Year);
+  {
+    let schema = Schema::new("agg1d")
+      .add_cols(vec![
+        Column::new("ticker", ColumnType::SYMBOL16),
+        Column::new("open", ColumnType::CURRENCY),
+        Column::new("high", ColumnType::CURRENCY),
+        Column::new("low", ColumnType::CURRENCY),
+        Column::new("close", ColumnType::CURRENCY),
+        Column::new("close_un", ColumnType::CURRENCY),
+        Column::new("volume", ColumnType::U64),
+      ])
+      .partition_by(PartitionBy::Year);
 
-  let mut agg1d = Table::create_or_open(schema).expect("Could not open table");
-  println!("Generating {} rows", ROW_COUNT);
-  let rows = generate_rows(ROW_COUNT, &mut rand::thread_rng());
+    let mut agg1d = Table::create_or_open(schema).expect("Could not create/open table");
+    println!("Generating {} rows", ROW_COUNT);
+    let rows = generate_rows(ROW_COUNT, &mut rand::thread_rng());
 
-  println!("Writing rows");
-  write_rows(&mut agg1d, rows);
+    println!("Writing rows");
+    write_rows(&mut agg1d, rows);
+  }
+  
+  {
+    let agg1d = Table::open("agg1d").expect("Could not open table");
+    let mut sum = 0.0;
+
+    agg1d.scan(
+      0,
+      NaiveDate::from_ymd(1972, 1, 1).and_hms(0, 0, 0).timestamp_nanos(),
+      vec!["ts", "ticker", "close", "volume"],
+      |row: Vec<RowValue>| {
+        if row[1].get_symbol() == "TX" {
+          sum += row[2].get_currency() as f64;
+        }
+      }
+    );
+    println!("Sum {}", sum);
+  }
 }
