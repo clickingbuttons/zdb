@@ -12,20 +12,12 @@ use std::{
 
 use super::PartitionMeta;
 
-impl PartitionMeta {
-  pub fn increment_row_count(&mut self) -> usize {
-    self.row_count += 1;
-    self.row_count
-  }
-}
-
 impl Table {
   // TODO: Use const generics once stable.
   // https://github.com/rust-lang/rust/issues/44580
   fn put_bytes(&mut self, bytes: &[u8]) {
     let size = bytes.len();
-    let row_count = self.cur_partition_meta.row_count;
-    let offset = row_count * size;
+    let offset = self.cur_partition_meta.row_count * size;
     self.columns[self.column_index].data[offset..offset + size].copy_from_slice(bytes);
     self.column_index += 1;
   }
@@ -37,12 +29,12 @@ impl Table {
     match self.schema.partition_by {
       PartitionBy::None => String::from("all"),
       PartitionBy::Year => time.format("%Y").to_string(),
-      PartitionBy::Month => time.format("%Y-m").to_string(),
+      PartitionBy::Month => time.format("%Y-%m").to_string(),
       PartitionBy::Day => time.format("%Y-%m-%d").to_string()
     }
   }
 
-  fn get_partition_ts(&self, date: NaiveDateTime, offset: u32) -> i64 {
+  fn get_partition_ts(&self, date: NaiveDateTime, offset: i32) -> i64 {
     match self.schema.partition_by {
       PartitionBy::None => {
         if offset == 0 {
@@ -51,17 +43,17 @@ impl Table {
           MAX_DATETIME.naive_utc()
         }
       }
-      PartitionBy::Year => NaiveDate::from_ymd(date.year() + offset as i32, 1, 1).and_hms(0, 0, 0),
+      PartitionBy::Year => NaiveDate::from_ymd(date.year() + offset, 1, 1).and_hms(0, 0, 0),
       PartitionBy::Month => {
         let mut year = date.year();
-        let mut month = date.month() + offset;
+        let mut month = date.month() + offset as u32;
         if month > 12 || month < 1 {
           month = month % 12;
-          year += offset as i32;
+          year += offset;
         }
         NaiveDate::from_ymd(year, month, 1).and_hms(0, 0, 0)
       }
-      PartitionBy::Day => date + Duration::days(1)
+      PartitionBy::Day => date + Duration::days(offset as i64)
     }
     .timestamp_nanos()
   }
@@ -79,8 +71,9 @@ impl Table {
         self.data_folder = partition_folder;
         let mut data_path = self.data_path.clone();
         data_path.push(&self.data_folder);
-        create_dir_all(&data_path).expect(&format!("Cannot create dir {:?}", &data_path));
-        self.columns = self.open_columns(&data_path, 10000);
+        create_dir_all(&data_path).unwrap_or_else(|_| panic!("Cannot create dir {:?}", &data_path));
+        // Expect 10m more rows in partition
+        self.columns = self.open_columns(&data_path, 10_000_000);
 
         self.cur_partition_meta = match self.partition_meta.get_mut(&self.data_folder) {
           Some(meta) => {
@@ -166,29 +159,28 @@ impl Table {
         .write(true)
         .create(true)
         .open(path)
-        .expect(&format!("Could not open symbols file {:?}", path));
+        .unwrap_or_else(|_| panic!("Could not open symbols file {:?}", path));
       f.write_all(symbols_text.as_bytes())
-        .expect(&format!("Could not write to symbols file {:?}", path));
+        .unwrap_or_else(|_| panic!("Could not write to symbols file {:?}", path));
       f.flush()
-        .expect(&format!("Could not flush to symbols file {:?}", path));
+        .unwrap_or_else(|_| panic!("Could not flush to symbols file {:?}", path));
     }
   }
 
   pub fn write(&mut self) {
     self.column_index = 0;
-    let row_count = self.cur_partition_meta.increment_row_count();
-    // Check if next write contains ts
+    self.cur_partition_meta.row_count += 1;
     // Check if next write will be larger than file
     for c in &mut self.columns {
       let size = c.data.len();
       let row_size = Table::get_row_size(c.r#type);
-      if size <= row_size * row_count {
+      if size <= row_size * (self.cur_partition_meta.row_count + 1) {
         let size = c.data.len() as u64;
-        println!("{} -> {}", size, size * 2);
+        // println!("Grow {}:{} -> {}", c.name, size, size * 2);
         // Unmap by dropping c.data
         drop(&c.data);
         // Grow file
-        c.file.set_len(size * 2).expect(&format!(
+        c.file.set_len(size * 2).unwrap_or_else(|_| panic!(
           "Could not truncate {:?} to {}",
           c.file,
           size * 2
@@ -197,7 +189,7 @@ impl Table {
         unsafe {
           c.data = memmap::MmapOptions::new()
             .map_mut(&c.file)
-            .expect(&format!("Could not mmapp {:?}", c.file));
+            .unwrap_or_else(|_| panic!("Could not mmapp {:?}", c.file));
         }
         // TODO: remove memmap dep and use mremap on *nix
         // https://man7.org/linux/man-pages/man2/mremap.2.html
@@ -206,16 +198,15 @@ impl Table {
   }
 
   pub fn flush(&mut self) {
-    let row_count = self.cur_partition_meta.row_count;
     for column in &mut self.columns {
       column
         .data
         .flush()
-        .expect(&format!("Could not flush {:?}", column.path));
+        .unwrap_or_else(|_| panic!("Could not flush {:?}", column.path));
       let row_size = Table::get_row_size(column.r#type);
       // Leave a spot for the next insert
-      let size = row_size * (row_count + 1);
-      column.file.set_len(size as u64).expect(&format!(
+      let size = row_size * (self.cur_partition_meta.row_count + 1);
+      column.file.set_len(size as u64).unwrap_or_else(|_| panic!(
         "Could not truncate {:?} to {} to save {} bytes on disk",
         column.file,
         size,

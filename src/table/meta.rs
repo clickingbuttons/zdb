@@ -14,11 +14,11 @@ use std::{
 pub fn read_meta(meta_path: &PathBuf, name: &str) -> (Schema, HashMap<String, PartitionMeta>) {
   let mut schema = Schema::new(name);
   let mut partition_meta = HashMap::new();
-  let f = File::open(meta_path).expect(&format!("Could not open meta file {:?}", meta_path));
+  let f = File::open(meta_path).unwrap_or_else(|_| panic!("Could not open meta file {:?}", meta_path));
   let f = BufReader::new(f);
   let mut section = String::new();
   for line in f.lines() {
-    let my_line = line.expect(&format!(
+    let my_line = line.unwrap_or_else(|_| panic!(
       "Could not read line from meta file {:?}",
       meta_path
     ));
@@ -41,23 +41,23 @@ pub fn read_meta(meta_path: &PathBuf, name: &str) -> (Schema, HashMap<String, Pa
         let from_ts_str = split.next().unwrap();
         let from_ts = from_ts_str
           .parse::<i64>()
-          .expect(&format!("Invalid from_ts {}", from_ts_str));
+          .unwrap_or_else(|_| panic!("Invalid from_ts {}", from_ts_str));
         let to_ts_str = split.next().unwrap();
         let to_ts = to_ts_str
           .parse::<i64>()
-          .expect(&format!("Invalid to_ts {}", to_ts_str));
+          .unwrap_or_else(|_| panic!("Invalid to_ts {}", to_ts_str));
         let min_ts_str = split.next().unwrap();
         let min_ts = min_ts_str
           .parse::<i64>()
-          .expect(&format!("Invalid min_ts {}", min_ts_str));
+          .unwrap_or_else(|_| panic!("Invalid min_ts {}", min_ts_str));
         let max_ts_str = split.next().unwrap();
         let max_ts = max_ts_str
           .parse::<i64>()
-          .expect(&format!("Invalid max_ts {}", max_ts_str));
+          .unwrap_or_else(|_| panic!("Invalid max_ts {}", max_ts_str));
         let row_count_str = split.next().unwrap();
         let row_count = row_count_str
           .parse::<usize>()
-          .expect(&format!("Invalid row_count {}", row_count_str));
+          .unwrap_or_else(|_| panic!("Invalid row_count {}", row_count_str));
 
         partition_meta.insert(partition, PartitionMeta {
           from_ts,
@@ -87,7 +87,7 @@ impl Table {
       .write(true)
       .create(true)
       .open(&self.meta_path)
-      .expect(&format!("Could not open meta file {:?}", &self.meta_path));
+      .unwrap_or_else(|_| panic!("Could not open meta file {:?}", &self.meta_path));
 
     let mut meta_text = String::from("[columns]\n");
     meta_text += &self
@@ -116,11 +116,11 @@ impl Table {
       );
     }
 
-    f.write_all(meta_text.as_bytes()).expect(&format!(
+    f.write_all(meta_text.as_bytes()).unwrap_or_else(|_| panic!(
       "Could not write to meta file {:?}",
       &self.meta_path
     ));
-    f.flush().expect(&format!(
+    f.flush().unwrap_or_else(|_| panic!(
       "Could not flush to meta file {:?}",
       &self.meta_path
     ));

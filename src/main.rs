@@ -6,7 +6,7 @@ use zdb::{
 };
 use zdb::test_symbols::SYMBOLS;
 
-static ROW_COUNT: usize = 20_000_000;
+static ROW_COUNT: usize = 20_000;
 
 struct OHLCV {
   ts:       i64,
@@ -49,24 +49,24 @@ fn generate_rows(row_count: usize, rng: &mut ThreadRng) -> Vec<OHLCV> {
   res
 }
 
-fn write_rows(agg1d: &mut Table, rows: Vec<OHLCV>) {
+fn write_rows(table: &mut Table, rows: Vec<OHLCV>) {
   // Maybe one day we can do this dynamically...
   for r in rows {
-    let ts = match agg1d.get_last_ts() {
+    let ts = match table.get_last_ts() {
       Some(ts) => ts,
       None => 0
     };
-    agg1d.put_timestamp(ts + r.ts);
-    agg1d.put_symbol(r.sym);
-    agg1d.put_currency(r.open);
-    agg1d.put_currency(r.high);
-    agg1d.put_currency(r.low);
-    agg1d.put_currency(r.close);
-    agg1d.put_currency(r.close_un);
-    agg1d.put_u64(r.volume);
-    agg1d.write();
+    table.put_timestamp(ts + r.ts);
+    table.put_symbol(r.sym);
+    table.put_currency(r.open);
+    table.put_currency(r.high);
+    table.put_currency(r.low);
+    table.put_currency(r.close);
+    table.put_currency(r.close_un);
+    table.put_u64(r.volume);
+    table.write();
   }
-  agg1d.flush();
+  table.flush();
 }
 
 fn main() {
@@ -83,20 +83,20 @@ fn main() {
     .partition_by(PartitionBy::Day);
   let table_name = schema.name.clone();
   {
-    let mut agg1d = Table::create_or_open(schema).expect("Could not create/open table");
+    let mut table = Table::create_or_open(schema).expect("Could not create/open table");
     println!("Generating {} rows", ROW_COUNT);
     let rows = generate_rows(ROW_COUNT, &mut rand::thread_rng());
 
     println!("Writing rows");
-    write_rows(&mut agg1d, rows);
+    write_rows(&mut table, rows);
   }
 
   {
     println!("Scanning rows");
-    let agg1d = Table::open(&table_name).expect("Could not open table");
+    let table = Table::open(&table_name).expect("Could not open table");
     let mut sum = 0.0;
 
-    agg1d.scan(
+    table.scan(
       0,
       NaiveDate::from_ymd(1972, 1, 1)
         .and_hms(0, 0, 0)

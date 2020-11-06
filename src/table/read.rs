@@ -37,7 +37,7 @@ fn get_column_symbols(symbols_path: &PathBuf, column: &Column) -> Vec<String> {
     Ok(file) => {
       let f = BufReader::new(&file);
       for line in f.lines() {
-        let my_line = line.expect(&format!(
+        let my_line = line.unwrap_or_else(|_| panic!(
           "Could not read line from symbol file {:?}",
           symbols_path
         ));
@@ -92,21 +92,16 @@ fn get_column_data(path: &PathBuf, row_count: usize, column_type: ColumnType) ->
     .write(true)
     .create(true)
     .open(&path)
-    .expect(&format!("Unable to open file {:?}", path));
-  // Allocate extra 1GB per column (expect many writes)
-  let extra_buffer = if row_count == 0 {
-    1
-  } else {
-    1024 * 1024 * 1024
-  };
-  let init_size = row_count * Table::get_row_size(column_type) + extra_buffer;
+    .unwrap_or_else(|_| panic!("Unable to open file {:?}", path));
+  
+  let init_size = (row_count + 1) * Table::get_row_size(column_type);
   file
     .set_len(init_size as u64)
-    .expect(&format!("Could not truncate {:?} to {}", path, init_size));
+    .unwrap_or_else(|_| panic!("Could not truncate {:?} to {}", path, init_size));
   unsafe {
     let data = memmap::MmapOptions::new()
       .map_mut(&file)
-      .expect(&format!("Could not mmapp {:?}", path));
+      .unwrap_or_else(|_| panic!("Could not mmapp {:?}", path));
 
     (file, data)
   }
@@ -130,7 +125,12 @@ impl Table {
     }
   }
 
-  pub fn open_columns(&self, partition_path: &PathBuf, row_count: usize) -> Vec<TableColumn> {
+  pub fn open_columns(&self, partition_path: &PathBuf, extra_row_count: usize) -> Vec<TableColumn> {
+    let row_count = match self.partition_meta.get(&self.data_folder) {
+      Some(meta) => meta.row_count,
+      None => 0
+    } + extra_row_count;
+
     self
       .schema
       .columns

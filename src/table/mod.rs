@@ -93,7 +93,7 @@ impl Table {
 
   pub fn create(schema: Schema) -> std::io::Result<Table> {
     let data_path = get_data_path(&schema.name);
-    create_dir_all(&data_path).expect(&format!("Cannot create dir {:?}", data_path));
+    create_dir_all(&data_path).unwrap_or_else(|_| panic!("Cannot create dir {:?}", data_path));
     let meta_path = get_meta_path(&data_path);
 
     if meta_path.exists() {

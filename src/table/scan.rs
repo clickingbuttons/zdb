@@ -98,7 +98,7 @@ impl Table {
           .columns
           .iter()
           .position(|col| &col.name == col_name)
-          .expect(&format!("Column {} does not exist", col_name));
+          .unwrap_or_else(|| panic!("Column {} does not exist", col_name));
         TableColumn {
           column:  self.schema.columns[index].clone(),
           symbols: &self.column_symbols[index].symbols
@@ -115,7 +115,7 @@ impl Table {
       .partition_meta
       .iter()
       .filter(|(_data_folder, partition_meta)| {
-        partition_meta.from_ts >= from_ts && partition_meta.from_ts < to_ts
+        from_ts >= partition_meta.from_ts || to_ts > partition_meta.from_ts
       })
       .collect::<Vec<_>>();
     partitions.sort_by_key(|(_data_folder, partition_meta)| partition_meta.from_ts);
@@ -138,8 +138,14 @@ impl Table {
           match table_column.r#type {
             ColumnType::TIMESTAMP => {
               let nanoseconds = read_bytes!(i64, data, row_index);
-              if col_index == 0 && nanoseconds > to_ts {
-                return;
+              if col_index == 0 {
+                if nanoseconds > to_ts {
+                  return;
+                }
+                else if nanoseconds < from_ts {
+                  // TODO: binary search + rollback for first ts
+                  break;
+                }
               }
               row.push(RowValue { i64: nanoseconds });
             }
@@ -188,7 +194,9 @@ impl Table {
             }
           }
         }
-        accumulator(row);
+        if row.len() > 0 {
+          accumulator(row);
+        }
       }
     }
   }
