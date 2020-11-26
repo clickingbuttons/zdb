@@ -124,7 +124,7 @@ impl Table {
   }
 
   pub fn open_columns(&self, partition_path: &PathBuf, extra_row_count: usize) -> Vec<TableColumn> {
-    let row_count = match self.partition_meta.get(&self.data_folder) {
+    let row_count = match self.partition_meta.get(&self.cur_partition) {
       Some(meta) => meta.row_count,
       None => 0
     } + extra_row_count;

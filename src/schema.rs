@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::{
   fmt,
   fmt::{Display, Formatter},
+  path::PathBuf,
   str::FromStr
 };
 
@@ -112,7 +113,8 @@ pub struct Schema {
   #[serde(skip, default)]
   pub name:         String,
   pub columns:      Vec<Column>,
-  pub partition_by: PartitionBy
+  pub partition_by: PartitionBy,
+  pub data_dirs:    Vec<PathBuf>
 }
 
 impl fmt::Debug for Schema {
@@ -137,7 +139,8 @@ impl<'a> Schema {
     Schema {
       name:         name.to_owned(),
       columns:      vec![Column::new("ts", ColumnType::TIMESTAMP)],
-      partition_by: PartitionBy::None
+      partition_by: PartitionBy::None,
+      data_dirs:    vec![PathBuf::from("data")]
     }
   }
 
@@ -153,6 +156,14 @@ impl<'a> Schema {
 
   pub fn partition_by(mut self, partition_by: PartitionBy) -> Self {
     self.partition_by = partition_by;
+    self
+  }
+
+  pub fn data_dirs(mut self, data_dirs: Vec<&str>) -> Self {
+    self.data_dirs = data_dirs
+      .iter()
+      .map(|data_dir| PathBuf::from(data_dir))
+      .collect::<Vec<_>>();
     self
   }
 }

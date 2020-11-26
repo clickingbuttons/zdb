@@ -4,7 +4,7 @@ use crate::{
   table::Table
 };
 use chrono::NaiveDateTime;
-use std::{cmp::max, convert::TryInto, fmt::Debug, mem::size_of, path::PathBuf};
+use std::{cmp::max, convert::TryInto, fmt::Debug, mem::size_of};
 
 // Important that this fits in single register.
 #[derive(Copy, Clone)]
@@ -114,22 +114,20 @@ impl Table {
     let mut partitions = self
       .partition_meta
       .iter()
-      .filter(|(_data_folder, partition_meta)| {
+      .filter(|(_data_dir, partition_meta)| {
         from_ts >= partition_meta.from_ts || to_ts > partition_meta.from_ts
       })
       .collect::<Vec<_>>();
-    partitions.sort_by_key(|(_data_folder, partition_meta)| partition_meta.from_ts);
+    partitions.sort_by_key(|(_data_dir, partition_meta)| partition_meta.from_ts);
 
     let columns = self.get_union(&columns);
 
-    for (data_folder, partition_meta) in partitions {
-      let mut partition_path = PathBuf::from(&self.data_path);
-      partition_path.push(&data_folder);
+    for (_data_dir, partition_meta) in partitions {
       let row_count = partition_meta.row_count;
 
       let data_columns = columns
         .iter()
-        .map(|column| self.open_column(&partition_path, row_count, &column.column))
+        .map(|column| self.open_column(&partition_meta.dir, row_count, &column.column))
         .collect::<Vec<_>>();
       for row_index in 0..row_count {
         let mut row = Vec::<RowValue>::with_capacity(data_columns.len());

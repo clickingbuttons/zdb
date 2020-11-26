@@ -22,7 +22,7 @@ impl Table {
     self.column_index += 1;
   }
 
-  fn get_partition_folder(&self, val: i64) -> String {
+  fn get_partition_dir(&self, val: i64) -> String {
     let time: NaiveDateTime = val.to_naive_date_time();
 
     // Specifiers: https://docs.rs/chrono/0.3.1/chrono/format/strftime/index.html
@@ -65,17 +65,12 @@ impl Table {
         || val < self.cur_partition_meta.min_ts
         || self.cur_partition_meta.row_count == 0
       {
-        // Save old meta
+        // Save old partition meta
         self.save_cur_partition_meta();
-        let partition_folder = self.get_partition_folder(val);
-        self.data_folder = partition_folder;
-        let mut data_path = self.data_path.clone();
-        data_path.push(&self.data_folder);
-        create_dir_all(&data_path).unwrap_or_else(|_| panic!("Cannot create dir {:?}", &data_path));
-        // Expect 10m more rows in partition
-        self.columns = self.open_columns(&data_path, 10_000_000);
-
-        self.cur_partition_meta = match self.partition_meta.get_mut(&self.data_folder) {
+        // Load new partition meta
+        let is_first_partition = self.cur_partition.is_empty();
+        self.cur_partition = self.get_partition_dir(val);
+        self.cur_partition_meta = match self.partition_meta.get_mut(&self.cur_partition) {
           Some(meta) => {
             if val < meta.to_ts {
               panic!(format!(
@@ -86,10 +81,19 @@ impl Table {
             meta.clone()
           }
           None => {
+            self.dir_index = if is_first_partition {
+              0
+            } else {
+              (self.dir_index + 1) % self.schema.data_dirs.len()
+            };
+            let mut partition_dir = self.schema.data_dirs[self.dir_index].clone();
+            partition_dir.push(&self.schema.name);
+            partition_dir.push(&self.cur_partition);
             let date = val.to_naive_date_time();
             let min_ts = self.get_partition_ts(date, 0);
             let max_ts = self.get_partition_ts(date, 1);
             PartitionMeta {
+              dir: partition_dir,
               from_ts: val,
               to_ts: val,
               min_ts,
@@ -98,6 +102,11 @@ impl Table {
             }
           }
         };
+        // Open new columns
+        create_dir_all(&self.cur_partition_meta.dir)
+          .unwrap_or_else(|_| panic!("Cannot create dir {:?}", &self.cur_partition_meta.dir));
+        // Expect 10m more rows in partition
+        self.columns = self.open_columns(&self.cur_partition_meta.dir, 10_000_000);
       }
       self.cur_partition_meta.to_ts = val;
     }

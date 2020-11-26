@@ -42,7 +42,7 @@ fn generate_rows(row_count: usize) -> Vec<OHLCV> {
   let mut res = Vec::with_capacity(row_count);
 
   for i in 0..row_count {
-    let row = generate_row((i * 100) as i64);
+    let row = generate_row((i * 300_000) as i64);
     res.push(row);
   }
 
@@ -80,6 +80,7 @@ fn main() {
       Column::new("close_un", ColumnType::CURRENCY),
       Column::new("volume", ColumnType::U64),
     ])
+    .data_dirs(vec!["data2", "data3"])
     .partition_by(PartitionBy::Day);
   let table_name = schema.name.clone();
   {

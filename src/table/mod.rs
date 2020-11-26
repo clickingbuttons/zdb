@@ -35,8 +35,9 @@ pub struct TableColumn {
   pub r#type: ColumnType
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PartitionMeta {
+  dir:       PathBuf,
   from_ts:   i64,
   to_ts:     i64,
   min_ts:    i64,
@@ -47,12 +48,6 @@ pub struct PartitionMeta {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Table {
   schema: Schema,
-  // Date-formatted string for partition
-  #[serde(skip)]
-  data_folder: String,
-  // Working directory for column files
-  #[serde(skip)]
-  data_path: PathBuf,
   // This file's existance means the Table exists
   #[serde(skip)]
   meta_path: PathBuf,
@@ -66,6 +61,10 @@ pub struct Table {
   pub column_symbols: Vec<TableColumnSymbols>,
   // Partition metadata
   pub partition_meta: HashMap<String, PartitionMeta>,
+  // Helps better choose which next partition to write to
+  dir_index: usize,
+  #[serde(skip)]
+  cur_partition: String,
   #[serde(skip)]
   cur_partition_meta: PartitionMeta
 }
@@ -126,18 +125,12 @@ impl Table {
     let table = Table {
       columns: Vec::new(),
       column_symbols,
-      data_folder: String::new(),
       schema,
+      dir_index: 0,
       column_index: 0,
       partition_meta: HashMap::new(),
-      cur_partition_meta: PartitionMeta {
-        from_ts:   0,
-        to_ts:     0,
-        min_ts:    0,
-        max_ts:    0,
-        row_count: 0
-      },
-      data_path,
+      cur_partition: String::new(),
+      cur_partition_meta: PartitionMeta::default(),
       meta_path
     };
     table.write_meta()?;
@@ -146,11 +139,10 @@ impl Table {
   }
 
   pub fn open<'b>(name: &'b str) -> std::io::Result<Table> {
-    let data_path = get_data_path(name);
+    let data_path = get_data_path(&name);
     let meta_path = get_meta_path(&data_path);
     let mut res = read_meta(&meta_path)?;
     res.column_symbols = read_column_symbols(&data_path, &res.schema);
-    res.data_path = data_path;
     res.meta_path = meta_path;
     res.schema.name = String::from(name);
 

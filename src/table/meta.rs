@@ -2,11 +2,12 @@ use crate::table::Table;
 use std::{
   fs::{File, OpenOptions},
   io::{BufReader, Write},
-  path::PathBuf,
+  path::PathBuf
 };
 
 pub fn read_meta(meta_path: &PathBuf) -> std::io::Result<Table> {
-  let f = File::open(meta_path).unwrap_or_else(|_| panic!("Could not open meta file {:?}", meta_path));
+  let f =
+    File::open(meta_path).unwrap_or_else(|_| panic!("Could not open meta file {:?}", meta_path));
   let reader = BufReader::new(f);
 
   let res = serde_json::from_reader(reader)?;
@@ -18,7 +19,7 @@ impl Table {
     if self.cur_partition_meta.row_count > 0 {
       self
         .partition_meta
-        .insert(self.data_folder.clone(), self.cur_partition_meta);
+        .insert(self.cur_partition.clone(), self.cur_partition_meta.clone());
     }
   }
 
@@ -30,14 +31,9 @@ impl Table {
       .unwrap_or_else(|_| panic!("Could not open meta file {:?}", &self.meta_path));
 
     serde_json::to_writer_pretty(&f, &self)
-      .unwrap_or_else(|_| panic!(
-        "Could not write to meta file {:?}",
-        &self.meta_path
-      ));
-    f.flush().unwrap_or_else(|_| panic!(
-      "Could not flush to meta file {:?}",
-      &self.meta_path
-    ));
+      .unwrap_or_else(|_| panic!("Could not write to meta file {:?}", &self.meta_path));
+    f.flush()
+      .unwrap_or_else(|_| panic!("Could not flush to meta file {:?}", &self.meta_path));
     Ok(())
   }
 
