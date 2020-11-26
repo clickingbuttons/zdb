@@ -180,11 +180,9 @@ impl Table {
         // Unmap by dropping c.data
         drop(&c.data);
         // Grow file
-        c.file.set_len(size * 2).unwrap_or_else(|_| panic!(
-          "Could not truncate {:?} to {}",
-          c.file,
-          size * 2
-        ));
+        c.file
+          .set_len(size * 2)
+          .unwrap_or_else(|_| panic!("Could not truncate {:?} to {}", c.file, size * 2));
         // Map file again
         unsafe {
           c.data = memmap::MmapOptions::new()
@@ -206,12 +204,14 @@ impl Table {
       let row_size = Table::get_row_size(column.r#type);
       // Leave a spot for the next insert
       let size = row_size * (self.cur_partition_meta.row_count + 1);
-      column.file.set_len(size as u64).unwrap_or_else(|_| panic!(
-        "Could not truncate {:?} to {} to save {} bytes on disk",
-        column.file,
-        size,
-        column.data.len() - size
-      ));
+      column.file.set_len(size as u64).unwrap_or_else(|_| {
+        panic!(
+          "Could not truncate {:?} to {} to save {} bytes on disk",
+          column.file,
+          size,
+          column.data.len() - size
+        )
+      });
     }
     self.write_symbols();
     self.save_cur_partition_meta();

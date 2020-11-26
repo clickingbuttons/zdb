@@ -24753,5 +24753,5 @@ pub const SYMBOLS: &'static [&'static str] = &[
   "TLMD",
   "TLMDW",
   "TMTS",
-  "VICE",
+  "VICE"
 ];

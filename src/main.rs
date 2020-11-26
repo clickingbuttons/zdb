@@ -1,10 +1,10 @@
 use chrono::NaiveDate;
-use rand::{prelude::ThreadRng, Rng};
+use fastrand;
 use zdb::{
   schema::*,
-  table::{scan::RowValue, Table}
+  table::{scan::RowValue, Table},
+  test_symbols::SYMBOLS
 };
-use zdb::test_symbols::SYMBOLS;
 
 static ROW_COUNT: usize = 20_000;
 
@@ -19,30 +19,30 @@ struct OHLCV {
   volume:   u64
 }
 
-fn generate_symbol(rng: &mut ThreadRng) -> String {
-  let rand_index = rng.gen_range(0, SYMBOLS.len());
+fn generate_symbol() -> String {
+  let rand_index = fastrand::usize(0..SYMBOLS.len());
 
   String::from(SYMBOLS[rand_index])
 }
 
-fn generate_row(ts: i64, rng: &mut ThreadRng) -> OHLCV {
+fn generate_row(ts: i64) -> OHLCV {
   OHLCV {
     ts,
-    sym: generate_symbol(rng),
-    open: rng.gen(),
-    high: rng.gen(),
-    low: rng.gen(),
-    close: rng.gen(),
-    close_un: rng.gen(),
-    volume: rng.gen()
+    sym: generate_symbol(),
+    open: fastrand::f32(),
+    high: fastrand::f32(),
+    low: fastrand::f32(),
+    close: fastrand::f32(),
+    close_un: fastrand::f32(),
+    volume: fastrand::u64(0..1_000_000_000)
   }
 }
 
-fn generate_rows(row_count: usize, rng: &mut ThreadRng) -> Vec<OHLCV> {
+fn generate_rows(row_count: usize) -> Vec<OHLCV> {
   let mut res = Vec::with_capacity(row_count);
 
   for i in 0..row_count {
-    let row = generate_row((i * 100) as i64, rng);
+    let row = generate_row((i * 100) as i64);
     res.push(row);
   }
 
@@ -85,7 +85,7 @@ fn main() {
   {
     let mut table = Table::create_or_open(schema).expect("Could not create/open table");
     println!("Generating {} rows", ROW_COUNT);
-    let rows = generate_rows(ROW_COUNT, &mut rand::thread_rng());
+    let rows = generate_rows(ROW_COUNT);
 
     println!("Writing rows");
     write_rows(&mut table, rows);

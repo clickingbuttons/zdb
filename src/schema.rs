@@ -1,10 +1,11 @@
+use serde::{Deserialize, Serialize};
 use std::{
   fmt,
   fmt::{Display, Formatter},
   str::FromStr
 };
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone)]
 pub enum ColumnType {
   TIMESTAMP,
   CURRENCY,
@@ -58,7 +59,7 @@ impl Display for ColumnType {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Column {
   pub name:   String,
   pub r#type: ColumnType
@@ -73,7 +74,7 @@ impl Column {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum PartitionBy {
   None,
   Year,
@@ -106,7 +107,9 @@ impl Display for PartitionBy {
   }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Schema {
+  #[serde(skip, default)]
   pub name:         String,
   pub columns:      Vec<Column>,
   pub partition_by: PartitionBy

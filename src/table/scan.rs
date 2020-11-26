@@ -141,8 +141,7 @@ impl Table {
               if col_index == 0 {
                 if nanoseconds > to_ts {
                   return;
-                }
-                else if nanoseconds < from_ts {
+                } else if nanoseconds < from_ts {
                   // TODO: binary search + rollback for first ts
                   break;
                 }

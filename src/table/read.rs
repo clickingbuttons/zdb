@@ -37,10 +37,8 @@ fn get_column_symbols(symbols_path: &PathBuf, column: &Column) -> Vec<String> {
     Ok(file) => {
       let f = BufReader::new(&file);
       for line in f.lines() {
-        let my_line = line.unwrap_or_else(|_| panic!(
-          "Could not read line from symbol file {:?}",
-          symbols_path
-        ));
+        let my_line = line
+          .unwrap_or_else(|_| panic!("Could not read line from symbol file {:?}", symbols_path));
         symbols.push(my_line);
       }
     }
@@ -93,7 +91,7 @@ fn get_column_data(path: &PathBuf, row_count: usize, column_type: ColumnType) ->
     .create(true)
     .open(&path)
     .unwrap_or_else(|_| panic!("Unable to open file {:?}", path));
-  
+
   let init_size = (row_count + 1) * Table::get_row_size(column_type);
   file
     .set_len(init_size as u64)

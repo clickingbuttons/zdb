@@ -3,6 +3,7 @@ mod read;
 pub mod scan;
 mod write;
 use fnv::FnvHashMap;
+use serde::{Deserialize, Serialize};
 
 use crate::schema::*;
 // "meta" crate is reserved
@@ -34,7 +35,7 @@ pub struct TableColumn {
   pub r#type: ColumnType
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
 pub struct PartitionMeta {
   from_ts:   i64,
   to_ts:     i64,
@@ -43,22 +44,29 @@ pub struct PartitionMeta {
   row_count: usize
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Table {
   schema: Schema,
   // Date-formatted string for partition
+  #[serde(skip)]
   data_folder: String,
   // Working directory for column files
+  #[serde(skip)]
   data_path: PathBuf,
   // This file's existance means the Table exists
+  #[serde(skip)]
   meta_path: PathBuf,
   // Current column for read/writes
+  #[serde(skip)]
   columns: Vec<TableColumn>,
+  #[serde(skip)]
   column_index: usize,
   // Table-wide symbols for columns of type Symbol
+  #[serde(skip)]
   pub column_symbols: Vec<TableColumnSymbols>,
   // Partition metadata
   pub partition_meta: HashMap<String, PartitionMeta>,
+  #[serde(skip)]
   cur_partition_meta: PartitionMeta
 }
 
@@ -140,26 +148,13 @@ impl Table {
   pub fn open<'b>(name: &'b str) -> std::io::Result<Table> {
     let data_path = get_data_path(name);
     let meta_path = get_meta_path(&data_path);
-    let (schema, partition_meta) = read_meta(&meta_path, name);
-    let column_symbols = read_column_symbols(&data_path, &schema);
+    let mut res = read_meta(&meta_path)?;
+    res.column_symbols = read_column_symbols(&data_path, &res.schema);
+    res.data_path = data_path;
+    res.meta_path = meta_path;
+    res.schema.name = String::from(name);
 
-    Ok(Table {
-      columns: Vec::new(),
-      column_symbols,
-      data_folder: String::new(),
-      schema,
-      column_index: 0,
-      partition_meta,
-      cur_partition_meta: PartitionMeta {
-        from_ts:   0,
-        to_ts:     0,
-        min_ts:    0,
-        max_ts:    0,
-        row_count: 0
-      },
-      data_path,
-      meta_path
-    })
+    Ok(res)
   }
 
   pub fn create_or_open(schema: Schema) -> std::io::Result<Table> {
