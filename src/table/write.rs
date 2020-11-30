@@ -144,6 +144,14 @@ impl Table {
     }
   }
 
+  pub fn put_i8(&mut self, val: i8) { self.put_bytes(&val.to_le_bytes()) }
+
+  pub fn put_u8(&mut self, val: u8) { self.put_bytes(&val.to_le_bytes()) }
+
+  pub fn put_i16(&mut self, val: i16) { self.put_bytes(&val.to_le_bytes()) }
+
+  pub fn put_u16(&mut self, val: u16) { self.put_bytes(&val.to_le_bytes()) }
+
   pub fn put_i32(&mut self, val: i32) { self.put_bytes(&val.to_le_bytes()) }
 
   pub fn put_u32(&mut self, val: u32) { self.put_bytes(&val.to_le_bytes()) }

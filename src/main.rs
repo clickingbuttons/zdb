@@ -6,7 +6,7 @@ use zdb::{
   test_symbols::SYMBOLS
 };
 
-static ROW_COUNT: usize = 20_000;
+static ROW_COUNT: usize = 6_000_000;
 
 struct OHLCV {
   ts:       i64,
@@ -80,7 +80,7 @@ fn main() {
       Column::new("close_un", ColumnType::CURRENCY),
       Column::new("volume", ColumnType::U64),
     ])
-    .data_dirs(vec!["data2", "data3"])
+    // .data_dirs(vec!["data2", "data3"])
     .partition_by(PartitionBy::Day);
   let table_name = schema.name.clone();
   {

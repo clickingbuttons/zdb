@@ -10,6 +10,10 @@ use std::{cmp::max, convert::TryInto, fmt::Debug, mem::size_of};
 #[derive(Copy, Clone)]
 pub union RowValue<'a> {
   pub sym: &'a String,
+  pub i8: i8,
+  pub u8: u8,
+  pub i16: i16,
+  pub u16: u16,
   pub i32: i32,
   pub u32: u32,
   pub f32: f32,
@@ -164,6 +168,22 @@ impl Table {
               let symbol_index = read_bytes!(u32, data, row_index) as usize;
               let sym = &columns[col_index].symbols[symbol_index - 1];
               row.push(RowValue { sym });
+            }
+            ColumnType::I8 => {
+              let i8 = read_bytes!(i8, data, row_index);
+              row.push(RowValue { i8 });
+            }
+            ColumnType::U8 => {
+              let u8 = read_bytes!(u8, data, row_index);
+              row.push(RowValue { u8 });
+            }
+            ColumnType::I16 => {
+              let i16 = read_bytes!(i16, data, row_index);
+              row.push(RowValue { i16 });
+            }
+            ColumnType::U16 => {
+              let u16 = read_bytes!(u16, data, row_index);
+              row.push(RowValue { u16 });
             }
             ColumnType::I32 => {
               let i32 = read_bytes!(i32, data, row_index);

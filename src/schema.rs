@@ -13,6 +13,10 @@ pub enum ColumnType {
   SYMBOL8,  // 256 symbols
   SYMBOL16, // 65536 symbols
   SYMBOL32, // 4294967296 symbols
+  I8,
+  U8,
+  I16,
+  U16,
   I32,
   U32, // Good for up to 4.29B volume
   F32,
@@ -31,11 +35,15 @@ impl FromStr for ColumnType {
       "SYMBOL8" => Ok(ColumnType::SYMBOL8),
       "SYMBOL16" => Ok(ColumnType::SYMBOL16),
       "SYMBOL32" => Ok(ColumnType::SYMBOL32),
+      "I8" => Ok(ColumnType::I8),
+      "U8" => Ok(ColumnType::U8),
+      "I16" => Ok(ColumnType::I16),
+      "U16" => Ok(ColumnType::U16),
       "I32" => Ok(ColumnType::I32),
       "U32" => Ok(ColumnType::U32),
+      "F32" => Ok(ColumnType::F32),
       "I64" => Ok(ColumnType::I64),
       "U64" => Ok(ColumnType::U64),
-      "F32" => Ok(ColumnType::F32),
       "F64" => Ok(ColumnType::F64),
       _ => Err(())
     }
@@ -50,6 +58,10 @@ impl Display for ColumnType {
       ColumnType::SYMBOL8 => f.write_str("SYMBOL8"),
       ColumnType::SYMBOL16 => f.write_str("SYMBOL16"),
       ColumnType::SYMBOL32 => f.write_str("SYMBOL32"),
+      ColumnType::I8 => f.write_str("I8"),
+      ColumnType::U8 => f.write_str("U8"),
+      ColumnType::I16 => f.write_str("I16"),
+      ColumnType::U16 => f.write_str("U16"),
       ColumnType::I32 => f.write_str("I32"),
       ColumnType::U32 => f.write_str("U32"),
       ColumnType::F32 => f.write_str("F32"),
