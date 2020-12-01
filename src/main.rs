@@ -6,7 +6,7 @@ use zdb::{
   test_symbols::SYMBOLS
 };
 
-static ROW_COUNT: usize = 6_000_000;
+static ROW_COUNT: usize = 60_000;
 
 struct OHLCV {
   ts:       i64,

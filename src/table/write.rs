@@ -18,6 +18,7 @@ impl Table {
   fn put_bytes(&mut self, bytes: &[u8]) {
     let size = bytes.len();
     let offset = self.cur_partition_meta.row_count * size;
+    // println!("put_bytes {} {}", self.column_index, self.cur_partition_meta.row_count);
     self.columns[self.column_index].data[offset..offset + size].copy_from_slice(bytes);
     self.column_index += 1;
   }
@@ -53,7 +54,7 @@ impl Table {
         }
         NaiveDate::from_ymd(year, month, 1).and_hms(0, 0, 0)
       }
-      PartitionBy::Day => date + Duration::days(offset as i64)
+      PartitionBy::Day => (date.date() + Duration::days(offset as i64)).and_hms(0, 0, 0)
     }
     .timestamp_nanos()
   }
@@ -193,7 +194,7 @@ impl Table {
       let row_size = Table::get_row_size(c.r#type);
       if size <= row_size * (self.cur_partition_meta.row_count + 1) {
         let size = c.data.len() as u64;
-        // println!("Grow {}:{} -> {}", c.name, size, size * 2);
+        // println!("Grow {} from {} to {}", c.name, size, size * 2);
         // Unmap by dropping c.data
         drop(&c.data);
         // Grow file

@@ -37,12 +37,12 @@ pub struct TableColumn {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PartitionMeta {
-  dir:       PathBuf,
-  from_ts:   i64,
-  to_ts:     i64,
-  min_ts:    i64,
-  max_ts:    i64,
-  row_count: usize
+  pub dir:       PathBuf,
+  pub from_ts:   i64,
+  pub to_ts:     i64,
+  pub min_ts:    i64,
+  pub max_ts:    i64,
+  pub row_count: usize
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -66,7 +66,7 @@ pub struct Table {
   #[serde(skip)]
   cur_partition: String,
   #[serde(skip)]
-  cur_partition_meta: PartitionMeta
+  pub cur_partition_meta: PartitionMeta
 }
 
 fn get_data_path(name: &str) -> PathBuf {
