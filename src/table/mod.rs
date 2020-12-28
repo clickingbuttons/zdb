@@ -32,7 +32,9 @@ pub struct TableColumn {
   pub file:   File,
   pub data:   memmap::MmapMut,
   pub path:   PathBuf,
-  pub r#type: ColumnType
+  pub r#type: ColumnType,
+  pub size:   usize,
+  pub resolution: i64
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -82,26 +84,6 @@ fn get_meta_path(data_path: &PathBuf) -> PathBuf {
 }
 
 impl Table {
-  pub fn get_row_size(r#type: ColumnType) -> usize {
-    match r#type {
-      ColumnType::TIMESTAMP => 8,
-      ColumnType::CURRENCY => 4,
-      ColumnType::SYMBOL8 => 1,
-      ColumnType::SYMBOL16 => 2,
-      ColumnType::SYMBOL32 => 4,
-      ColumnType::I8 => 1,
-      ColumnType::U8 => 1,
-      ColumnType::I16 => 2,
-      ColumnType::U16 => 2,
-      ColumnType::I32 => 4,
-      ColumnType::U32 => 4,
-      ColumnType::F32 => 4,
-      ColumnType::I64 => 8,
-      ColumnType::U64 => 8,
-      ColumnType::F64 => 8
-    }
-  }
-
   pub fn create(schema: Schema) -> std::io::Result<Table> {
     let data_path = get_data_path(&schema.name);
     create_dir_all(&data_path).unwrap_or_else(|_| panic!("Cannot create dir {:?}", data_path));

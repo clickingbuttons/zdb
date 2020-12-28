@@ -56,12 +56,12 @@ fn generate_rows(row_count: usize, rng: &mut ThreadRng) -> Vec<OHLCV> {
 fn write_rows(rows: Vec<OHLCV>, index: i64) {
   let schema = Schema::new(&format!("agg1d{}", index))
     .add_cols(vec![
-      Column::new("ticker", ColumnType::SYMBOL16),
-      Column::new("open", ColumnType::CURRENCY),
-      Column::new("high", ColumnType::CURRENCY),
-      Column::new("low", ColumnType::CURRENCY),
-      Column::new("close", ColumnType::CURRENCY),
-      Column::new("close_un", ColumnType::CURRENCY),
+      Column::new("ticker", ColumnType::Symbol16),
+      Column::new("open", ColumnType::Currency),
+      Column::new("high", ColumnType::Currency),
+      Column::new("low", ColumnType::Currency),
+      Column::new("close", ColumnType::Currency),
+      Column::new("close_un", ColumnType::Currency),
       Column::new("volume", ColumnType::U64),
     ])
     .partition_by(PartitionBy::Year);

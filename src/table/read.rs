@@ -19,9 +19,9 @@ pub fn get_symbols_path(data_path: &PathBuf, column: &Column) -> PathBuf {
 
 pub fn get_capacity(column: &Column) -> usize {
   match column.r#type {
-    ColumnType::SYMBOL8 => 2 << 7,
-    ColumnType::SYMBOL16 => 2 << 15,
-    ColumnType::SYMBOL32 => 2 << 31,
+    ColumnType::Symbol8 => 2 << 7,
+    ColumnType::Symbol16 => 2 << 15,
+    ColumnType::Symbol32 => 2 << 31,
     _ => 0
   }
 }
@@ -80,11 +80,11 @@ pub fn read_column_symbols(data_path: &PathBuf, schema: &Schema) -> Vec<TableCol
 fn get_col_path(data_path: &PathBuf, column: &Column) -> PathBuf {
   let mut path = data_path.clone();
   path.push(&column.name);
-  path.set_extension(String::from(format!("{}", column.r#type).to_lowercase()));
+  path.set_extension(String::from(format!("{:?}", column.r#type).to_lowercase()));
   path
 }
 
-fn get_column_data(path: &PathBuf, row_count: usize, column_type: ColumnType) -> (File, MmapMut) {
+fn get_column_data(path: &PathBuf, row_count: usize, column_size: usize) -> (File, MmapMut) {
   let file = OpenOptions::new()
     .read(true)
     .write(true)
@@ -92,7 +92,7 @@ fn get_column_data(path: &PathBuf, row_count: usize, column_type: ColumnType) ->
     .open(&path)
     .unwrap_or_else(|_| panic!("Unable to open file {:?}", path));
 
-  let init_size = (row_count + 1) * Table::get_row_size(column_type);
+  let init_size = (row_count + 1) * column_size;
   file
     .set_len(init_size as u64)
     .unwrap_or_else(|_| panic!("Could not truncate {:?} to {}", path, init_size));
@@ -113,13 +113,15 @@ impl Table {
     column: &Column
   ) -> TableColumn {
     let path = get_col_path(&partition_path, &column);
-    let (file, data) = get_column_data(&path, row_count, column.r#type);
+    let (file, data) = get_column_data(&path, row_count, column.size);
     TableColumn {
       name: column.name.clone(),
       file,
       data,
       path,
-      r#type: column.r#type.clone()
+      r#type: column.r#type.clone(),
+      size: column.size,
+      resolution: column.resolution
     }
   }
 

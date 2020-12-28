@@ -138,8 +138,14 @@ impl Table {
         for (col_index, table_column) in data_columns.iter().enumerate() {
           let data = &table_column.data;
           match table_column.r#type {
-            ColumnType::TIMESTAMP => {
-              let nanoseconds = read_bytes!(i64, data, row_index);
+            ColumnType::Timestamp => {
+              let nanoseconds = match table_column.size {
+                8 => read_bytes!(i64, data, row_index),
+                4 => read_bytes!(u32, data, row_index) as i64,
+                2 => read_bytes!(u16, data, row_index) as i64,
+                1 => read_bytes!(u8,  data, row_index) as i64,
+                s => panic!(format!("Invalid column size {}", s))
+              } * table_column.resolution;
               if col_index == 0 {
                 if nanoseconds > to_ts {
                   return;
@@ -150,21 +156,21 @@ impl Table {
               }
               row.push(RowValue { i64: nanoseconds });
             }
-            ColumnType::CURRENCY => {
+            ColumnType::Currency => {
               let f32 = read_bytes!(f32, data, row_index);
               row.push(RowValue { f32 });
             }
-            ColumnType::SYMBOL8 => {
+            ColumnType::Symbol8 => {
               let symbol_index = read_bytes!(u8, data, row_index) as usize;
               let sym = &columns[col_index].symbols[symbol_index - 1];
               row.push(RowValue { sym });
             }
-            ColumnType::SYMBOL16 => {
+            ColumnType::Symbol16 => {
               let symbol_index = read_bytes!(u16, data, row_index) as usize;
               let sym = &columns[col_index].symbols[symbol_index - 1];
               row.push(RowValue { sym });
             }
-            ColumnType::SYMBOL32 => {
+            ColumnType::Symbol32 => {
               let symbol_index = read_bytes!(u32, data, row_index) as usize;
               let sym = &columns[col_index].symbols[symbol_index - 1];
               row.push(RowValue { sym });

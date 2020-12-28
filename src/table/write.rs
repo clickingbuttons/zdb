@@ -24,14 +24,14 @@ impl Table {
   }
 
   fn get_partition_dir(&self, val: i64) -> String {
-    let time: NaiveDateTime = val.to_naive_date_time();
+    let datetime: NaiveDateTime = val.to_naive_date_time();
 
     // Specifiers: https://docs.rs/chrono/0.3.1/chrono/format/strftime/index.html
     match self.schema.partition_by {
       PartitionBy::None => String::from("all"),
-      PartitionBy::Year => time.format("%Y").to_string(),
-      PartitionBy::Month => time.format("%Y-%m").to_string(),
-      PartitionBy::Day => time.format("%Y-%m-%d").to_string()
+      PartitionBy::Year => datetime.format("%Y").to_string(),
+      PartitionBy::Month => datetime.format("%Y-%m").to_string(),
+      PartitionBy::Day => datetime.format("%Y-%m-%d").to_string()
     }
   }
 
@@ -59,7 +59,9 @@ impl Table {
     .timestamp_nanos()
   }
 
-  pub fn put_timestamp(&mut self, val: i64) {
+  pub fn put_timestamp(&mut self, mut val: i64) {
+    let resolution = self.schema.columns[self.column_index].resolution;
+    val = val / resolution * resolution;
     if self.column_index == 0 {
       // New partition?
       if val > self.cur_partition_meta.max_ts
@@ -111,7 +113,13 @@ impl Table {
       }
       self.cur_partition_meta.to_ts = val;
     }
-    self.put_i64(val);
+    match self.schema.columns[self.column_index].size {
+      8 => self.put_i64(val),
+      4 => self.put_u32((val / resolution) as u32),
+      2 => self.put_u16((val / resolution) as u16),
+      1 => self.put_u8((val / resolution) as u8),
+      s => panic!(format!("Invalid column size {}", s))
+    };
   }
 
   pub fn put_currency(&mut self, val: f32) { self.put_f32(val) }
@@ -130,18 +138,10 @@ impl Table {
     };
     let column = &self.columns[self.column_index];
     match column.r#type {
-      ColumnType::SYMBOL8 => {
-        self.put_bytes(&(index as u8).to_le_bytes());
-      }
-      ColumnType::SYMBOL16 => {
-        self.put_bytes(&(index as u16).to_le_bytes());
-      }
-      ColumnType::SYMBOL32 => {
-        self.put_bytes(&(index as u32).to_le_bytes());
-      }
-      _ => {
-        panic!(format!("Unsupported column type {}", column.r#type));
-      }
+      ColumnType::Symbol8 =>  self.put_u8(index as u8),
+      ColumnType::Symbol16 => self.put_u16(index as u16),
+      ColumnType::Symbol32 => self.put_u32(index as u32),
+      bad_type => panic!(format!("Unsupported column type {:?}", bad_type))
     }
   }
 
@@ -191,7 +191,7 @@ impl Table {
     // Check if next write will be larger than file
     for c in &mut self.columns {
       let size = c.data.len();
-      let row_size = Table::get_row_size(c.r#type);
+      let row_size = c.size;
       if size <= row_size * (self.cur_partition_meta.row_count + 1) {
         let size = c.data.len() as u64;
         // println!("Grow {} from {} to {}", c.name, size, size * 2);
@@ -219,9 +219,8 @@ impl Table {
         .data
         .flush()
         .unwrap_or_else(|_| panic!("Could not flush {:?}", column.path));
-      let row_size = Table::get_row_size(column.r#type);
       // Leave a spot for the next insert
-      let size = row_size * (self.cur_partition_meta.row_count + 1);
+      let size = column.size * (self.cur_partition_meta.row_count + 1);
       column.file.set_len(size as u64).unwrap_or_else(|_| {
         panic!(
           "Could not truncate {:?} to {} to save {} bytes on disk",

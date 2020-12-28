@@ -6,7 +6,7 @@ use zdb::{
   test_symbols::SYMBOLS
 };
 
-static ROW_COUNT: usize = 60_000;
+static ROW_COUNT: usize = 24 * 60 * 60 + 100;
 
 struct OHLCV {
   ts:       i64,
@@ -38,11 +38,11 @@ fn generate_row(ts: i64) -> OHLCV {
   }
 }
 
-fn generate_rows(row_count: usize) -> Vec<OHLCV> {
+fn generate_rows(from_ts: i64, row_count: usize) -> Vec<OHLCV> {
   let mut res = Vec::with_capacity(row_count);
 
   for i in 0..row_count {
-    let row = generate_row((i * 300_000) as i64);
+    let row = generate_row(from_ts + (i * 60_000_000_000) as i64);
     res.push(row);
   }
 
@@ -52,11 +52,7 @@ fn generate_rows(row_count: usize) -> Vec<OHLCV> {
 fn write_rows(table: &mut Table, rows: Vec<OHLCV>) {
   // Maybe one day we can do this dynamically...
   for r in rows {
-    let ts = match table.get_last_ts() {
-      Some(ts) => ts,
-      None => 0
-    };
-    table.put_timestamp(ts + r.ts);
+    table.put_timestamp(r.ts);
     table.put_symbol(r.sym);
     table.put_currency(r.open);
     table.put_currency(r.high);
@@ -70,14 +66,16 @@ fn write_rows(table: &mut Table, rows: Vec<OHLCV>) {
 }
 
 fn main() {
+  fastrand::seed(0);
   let schema = Schema::new("agg1m")
     .add_cols(vec![
-      Column::new("ticker", ColumnType::SYMBOL16),
-      Column::new("open", ColumnType::CURRENCY),
-      Column::new("high", ColumnType::CURRENCY),
-      Column::new("low", ColumnType::CURRENCY),
-      Column::new("close", ColumnType::CURRENCY),
-      Column::new("close_un", ColumnType::CURRENCY),
+      Column::new("ts", ColumnType::Timestamp).with_resolution(60 * 1_000_000_000),
+      Column::new("ticker", ColumnType::Symbol16),
+      Column::new("open", ColumnType::Currency),
+      Column::new("high", ColumnType::Currency),
+      Column::new("low", ColumnType::Currency),
+      Column::new("close", ColumnType::Currency),
+      Column::new("close_un", ColumnType::Currency),
       Column::new("volume", ColumnType::U64),
     ])
     // .data_dirs(vec!["data2", "data3"])
@@ -86,7 +84,11 @@ fn main() {
   {
     let mut table = Table::create_or_open(schema).expect("Could not create/open table");
     println!("Generating {} rows", ROW_COUNT);
-    let rows = generate_rows(ROW_COUNT);
+    let ts = match table.get_last_ts() {
+      Some(ts) => ts,
+      None => 0
+    };
+    let rows = generate_rows(ts, ROW_COUNT);
 
     println!("Writing rows");
     write_rows(&mut table, rows);
@@ -102,11 +104,10 @@ fn main() {
       NaiveDate::from_ymd(1972, 1, 1)
         .and_hms(0, 0, 0)
         .timestamp_nanos(),
-      vec!["ts", "ticker", "close", "volume"],
+      vec!["ts", "close"],
       |row: Vec<RowValue>| {
-        if row[1].get_symbol() == "TX" {
-          sum += row[2].get_currency() as f64;
-        }
+        // println!("{} {}", row[0].get_timestamp(), row[1].get_currency() as f64);
+        sum += row[1].get_currency() as f64;
       }
     );
     println!("Sum {}", sum);

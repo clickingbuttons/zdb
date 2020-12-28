@@ -1,18 +1,17 @@
 use serde::{Deserialize, Serialize};
 use std::{
   fmt,
-  fmt::{Display, Formatter},
   path::PathBuf,
-  str::FromStr
+  cmp::PartialEq
 };
 
-#[derive(Serialize, Deserialize, Debug, Copy, Clone)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq)]
 pub enum ColumnType {
-  TIMESTAMP,
-  CURRENCY,
-  SYMBOL8,  // 256 symbols
-  SYMBOL16, // 65536 symbols
-  SYMBOL32, // 4294967296 symbols
+  Timestamp,
+  Currency,
+  Symbol8,  // 256 symbols
+  Symbol16, // 65536 symbols
+  Symbol32, // 4294967296 symbols
   I8,
   U8,
   I16,
@@ -25,99 +24,54 @@ pub enum ColumnType {
   F64
 }
 
-impl FromStr for ColumnType {
-  type Err = ();
-
-  fn from_str(input: &str) -> Result<ColumnType, Self::Err> {
-    match input {
-      "TIMESTAMP" => Ok(ColumnType::TIMESTAMP),
-      "CURRENCY" => Ok(ColumnType::CURRENCY),
-      "SYMBOL8" => Ok(ColumnType::SYMBOL8),
-      "SYMBOL16" => Ok(ColumnType::SYMBOL16),
-      "SYMBOL32" => Ok(ColumnType::SYMBOL32),
-      "I8" => Ok(ColumnType::I8),
-      "U8" => Ok(ColumnType::U8),
-      "I16" => Ok(ColumnType::I16),
-      "U16" => Ok(ColumnType::U16),
-      "I32" => Ok(ColumnType::I32),
-      "U32" => Ok(ColumnType::U32),
-      "F32" => Ok(ColumnType::F32),
-      "I64" => Ok(ColumnType::I64),
-      "U64" => Ok(ColumnType::U64),
-      "F64" => Ok(ColumnType::F64),
-      _ => Err(())
-    }
-  }
-}
-
-impl Display for ColumnType {
-  fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-    match self {
-      ColumnType::TIMESTAMP => f.write_str("TIMESTAMP"),
-      ColumnType::CURRENCY => f.write_str("CURRENCY"),
-      ColumnType::SYMBOL8 => f.write_str("SYMBOL8"),
-      ColumnType::SYMBOL16 => f.write_str("SYMBOL16"),
-      ColumnType::SYMBOL32 => f.write_str("SYMBOL32"),
-      ColumnType::I8 => f.write_str("I8"),
-      ColumnType::U8 => f.write_str("U8"),
-      ColumnType::I16 => f.write_str("I16"),
-      ColumnType::U16 => f.write_str("U16"),
-      ColumnType::I32 => f.write_str("I32"),
-      ColumnType::U32 => f.write_str("U32"),
-      ColumnType::F32 => f.write_str("F32"),
-      ColumnType::I64 => f.write_str("I64"),
-      ColumnType::U64 => f.write_str("U64"),
-      ColumnType::F64 => f.write_str("F64")
-    }
-  }
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Column {
-  pub name:   String,
-  pub r#type: ColumnType
+  pub name:       String,
+  pub r#type:     ColumnType,
+  // How many bytes each row of the column takes
+  pub size:       usize,
+  // If timestamp column what nanoseconds to divide by. Can be used to shrink column size
+  pub resolution: i64
 }
 
 impl Column {
   pub fn new(name: &str, r#type: ColumnType) -> Column {
     Column {
       name: name.to_owned(),
-      r#type
+      r#type,
+      resolution: 1,
+      size: match r#type {
+        ColumnType::Timestamp => 8,
+        ColumnType::Currency => 4,
+        ColumnType::Symbol8 => 1,
+        ColumnType::Symbol16 => 2,
+        ColumnType::Symbol32 => 4,
+        ColumnType::I8 => 1,
+        ColumnType::U8 => 1,
+        ColumnType::I16 => 2,
+        ColumnType::U16 => 2,
+        ColumnType::I32 => 4,
+        ColumnType::U32 => 4,
+        ColumnType::F32 => 4,
+        ColumnType::I64 => 8,
+        ColumnType::U64 => 8,
+        ColumnType::F64 => 8
+      }
     }
+  }
+
+  pub fn with_resolution(mut self, resolution: i64) -> Column {
+    self.resolution = resolution;
+    self
   }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub enum PartitionBy {
   None,
   Year,
   Month,
   Day
-}
-
-impl FromStr for PartitionBy {
-  type Err = ();
-
-  fn from_str(input: &str) -> Result<PartitionBy, Self::Err> {
-    match input {
-      "None" => Ok(PartitionBy::None),
-      "Year" => Ok(PartitionBy::Year),
-      "Month" => Ok(PartitionBy::Month),
-      "Day" => Ok(PartitionBy::Day),
-      _ => Err(())
-    }
-  }
-}
-
-impl Display for PartitionBy {
-  fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-    match self {
-      PartitionBy::None => f.write_str("None"),
-      PartitionBy::Year => f.write_str("Year"),
-      PartitionBy::Month => f.write_str("Month"),
-      PartitionBy::Day => f.write_str("Day")
-    }
-  }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -146,11 +100,11 @@ impl fmt::Debug for Schema {
   }
 }
 
-impl<'a> Schema {
-  pub fn new(name: &'a str) -> Schema {
-    Schema {
+impl<'a> Schema{
+  pub fn new(name: &'a str) -> Self {
+    Self {
       name:         name.to_owned(),
-      columns:      vec![Column::new("ts", ColumnType::TIMESTAMP)],
+      columns:      vec![],
       partition_by: PartitionBy::None,
       data_dirs:    vec![PathBuf::from("data")]
     }
@@ -158,16 +112,19 @@ impl<'a> Schema {
 
   pub fn add_col(mut self, column: Column) -> Self {
     self.columns.push(column);
+    self.set_timestamp_size();
     self
   }
 
   pub fn add_cols(mut self, columns: Vec<Column>) -> Self {
     self.columns.extend(columns);
+    self.set_timestamp_size();
     self
   }
 
   pub fn partition_by(mut self, partition_by: PartitionBy) -> Self {
     self.partition_by = partition_by;
+    self.set_timestamp_size();
     self
   }
 
@@ -177,5 +134,28 @@ impl<'a> Schema {
       .map(|data_dir| PathBuf::from(data_dir))
       .collect::<Vec<_>>();
     self
+  }
+
+  fn set_timestamp_size(&mut self) {
+    // Determine lengths of timestamp columns based on partition_by and their resolution
+    let partition_by = self.partition_by;
+    self.columns.iter_mut().filter(|col| col.r#type == ColumnType::Timestamp).for_each(|mut col| {
+      let nanoseconds_in_partition = match partition_by {
+        PartitionBy::Day  => 24 * 60 * 60 * 1_000_000_000,
+        PartitionBy::Month=> 24 * 60 * 60 * 1_000_000_000 * 31,
+        PartitionBy::Year => 24 * 60 * 60 * 1_000_000_000 * 365,
+        PartitionBy::None => i64::MAX
+      };
+      col.size = match nanoseconds_in_partition / col.resolution {
+        0..=256            => 1,
+        257..=65536        => 2,
+        65537..=4294967296 => 4,
+        _                  => {
+          // Don't bother rounding to be compatible with writing i64s
+          col.resolution = 1;
+          8
+        }
+      };
+    });
   }
 }
