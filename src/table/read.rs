@@ -107,7 +107,6 @@ fn get_column_data(path: &PathBuf, row_count: usize, column_size: usize) -> (Fil
 
 impl Table {
   pub fn open_column(
-    &self,
     partition_path: &PathBuf,
     row_count: usize,
     column: &Column
@@ -135,7 +134,7 @@ impl Table {
       .schema
       .columns
       .iter()
-      .map(|column| self.open_column(partition_path, row_count, column))
+      .map(|column| Table::open_column(partition_path, row_count, column))
       .collect::<Vec<_>>()
   }
 }

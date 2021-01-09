@@ -1,7 +1,7 @@
 use crate::{
   calendar::ToNaiveDateTime,
   schema::{Column, ColumnType},
-  table::Table
+  table::{Table,PartitionMeta,TableColumn}
 };
 use chrono::NaiveDateTime;
 use std::{cmp::max, convert::TryInto, fmt::Debug, mem::size_of};
@@ -87,13 +87,13 @@ macro_rules! read_bytes {
   }};
 }
 
-struct TableColumn<'a> {
+struct TableColumnMeta<'a> {
   column:  Column,
   symbols: &'a Vec<String>
 }
 
 impl Table {
-  fn get_union<'a>(&'a self, columns: &Vec<&str>) -> Vec<TableColumn<'a>> {
+  fn get_union<'a>(&'a self, columns: &Vec<&str>) -> Vec<TableColumnMeta<'a>> {
     columns
       .iter()
       .map(|col_name| {
@@ -103,7 +103,7 @@ impl Table {
           .iter()
           .position(|col| &col.name == col_name)
           .unwrap_or_else(|| panic!("Column {} does not exist", col_name));
-        TableColumn {
+        TableColumnMeta {
           column:  self.schema.columns[index].clone(),
           symbols: &self.column_symbols[index].symbols
         }
@@ -111,119 +111,172 @@ impl Table {
       .collect::<Vec<_>>()
   }
 
-  pub fn scan<F>(&self, from_ts: i64, to_ts: i64, columns: Vec<&str>, mut accumulator: F)
-  where
-    F: FnMut(Vec<RowValue>)
-  {
+  // pub fn scan_from(&mut self, from_ts: i64, to_ts: i64) { self.scan_filters(from_ts, to_ts, vec![])}
+  // pub fn scan_all(&mut self) { self.scan_from(std::i64::MIN, std::i64::MAX) }
+
+  /*
+   * juliaFunc = "
+   *   acc = Float32(0);
+   *   function f(x::Int16, y::Float32)
+   *     global acc += x;
+   *     global acc += y;
+   *     return acc;
+   *   end
+   * "
+   *
+   * 1. Verify args match column types:
+   *   Meta.parse(juliaFunc.split(";").last())).args[1].args[1].args[2].args[2] === :Int16
+   *   Meta.parse(juliaFunc.split(";").last())).args[1].args[1].args[3].args[2] === :Float32
+   *
+   * 2. Return serialized val casted to Vec<u8>
+   *   using Serialization
+   *   serialize(io, juliaFuncLastCall(row)).data
+   * 
+   * Then client can call
+   *   deserialize(IOBuffer(take!(io)))
+   */
+  //pub fn scan_julia(&self, from_ts: i64, to_ts: i64, columns: Vec<&str>, julia_prog: String) {
+  //}
+
+  pub fn row_iter(&self, from_ts: i64, to_ts: i64, columns: Vec<&str>) -> RowIterator {
     let mut partitions = self
       .partition_meta
       .iter()
       .filter(|(_data_dir, partition_meta)| {
         from_ts >= partition_meta.from_ts || to_ts > partition_meta.from_ts
       })
-      .collect::<Vec<_>>();
-    partitions.sort_by_key(|(_data_dir, partition_meta)| partition_meta.from_ts);
+      .map(|(_data_dir, partition_meta)| partition_meta)
+      .collect::<Vec<&PartitionMeta>>();
+    partitions.sort_by_key(|partition_meta| partition_meta.from_ts);
 
     let columns = self.get_union(&columns);
 
-    for (_data_dir, partition_meta) in partitions {
-      let row_count = partition_meta.row_count;
+    RowIterator {
+      from_ts,
+      to_ts,
+      columns,
+      partitions,
+      partition_index: 0,
+      data_columns: vec![],
+      row_index: 0
+    }
+  }
+}
 
-      let data_columns = columns
+pub struct RowIterator<'a> {
+  from_ts:    i64,
+  to_ts:      i64,
+  columns:       Vec<TableColumnMeta<'a>>,
+  partitions: Vec<&'a PartitionMeta>,
+  partition_index:  usize,
+  data_columns: Vec<TableColumn>,
+  row_index:      usize
+}
+
+impl<'a> Iterator for RowIterator<'a> {
+  type Item = Vec<RowValue<'a>>;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    if self.row_index > self.partitions[self.partition_index].row_count {
+      self.partition_index += 1;
+      if self.partition_index > self.partitions.len() {
+        return None;
+      }
+      self.row_index = 0;
+    }
+    let partition_meta = self.partitions.get(self.partition_index)?;
+    if self.row_index == 0 {
+      self.data_columns = self.columns
         .iter()
-        .map(|column| self.open_column(&partition_meta.dir, row_count, &column.column))
-        .collect::<Vec<_>>();
-      for row_index in 0..row_count {
-        let mut row = Vec::<RowValue>::with_capacity(data_columns.len());
-        for (col_index, table_column) in data_columns.iter().enumerate() {
-          let data = &table_column.data;
-          match table_column.r#type {
-            ColumnType::Timestamp => {
-              let nanoseconds = match table_column.size {
-                8 => read_bytes!(i64, data, row_index),
-                4 => read_bytes!(u32, data, row_index) as i64,
-                2 => read_bytes!(u16, data, row_index) as i64,
-                1 => read_bytes!(u8,  data, row_index) as i64,
-                s => panic!(format!("Invalid column size {}", s))
-              } * table_column.resolution;
-              if col_index == 0 {
-                if nanoseconds > to_ts {
-                  return;
-                } else if nanoseconds < from_ts {
-                  // TODO: binary search + rollback for first ts
-                  break;
-                }
-              }
-              row.push(RowValue { i64: nanoseconds });
-            }
-            ColumnType::Currency => {
-              let f32 = read_bytes!(f32, data, row_index);
-              row.push(RowValue { f32 });
-            }
-            ColumnType::Symbol8 => {
-              let symbol_index = read_bytes!(u8, data, row_index) as usize;
-              let sym = &columns[col_index].symbols[symbol_index - 1];
-              row.push(RowValue { sym });
-            }
-            ColumnType::Symbol16 => {
-              let symbol_index = read_bytes!(u16, data, row_index) as usize;
-              let sym = &columns[col_index].symbols[symbol_index - 1];
-              row.push(RowValue { sym });
-            }
-            ColumnType::Symbol32 => {
-              let symbol_index = read_bytes!(u32, data, row_index) as usize;
-              let sym = &columns[col_index].symbols[symbol_index - 1];
-              row.push(RowValue { sym });
-            }
-            ColumnType::I8 => {
-              let i8 = read_bytes!(i8, data, row_index);
-              row.push(RowValue { i8 });
-            }
-            ColumnType::U8 => {
-              let u8 = read_bytes!(u8, data, row_index);
-              row.push(RowValue { u8 });
-            }
-            ColumnType::I16 => {
-              let i16 = read_bytes!(i16, data, row_index);
-              row.push(RowValue { i16 });
-            }
-            ColumnType::U16 => {
-              let u16 = read_bytes!(u16, data, row_index);
-              row.push(RowValue { u16 });
-            }
-            ColumnType::I32 => {
-              let i32 = read_bytes!(i32, data, row_index);
-              row.push(RowValue { i32 });
-            }
-            ColumnType::U32 => {
-              let u32 = read_bytes!(u32, data, row_index);
-              row.push(RowValue { u32 });
-            }
-            ColumnType::F32 => {
-              let f32 = read_bytes!(f32, data, row_index);
-              row.push(RowValue { f32 });
-            }
-            ColumnType::I64 => {
-              let i64 = read_bytes!(i64, data, row_index);
-              row.push(RowValue { i64 });
-            }
-            ColumnType::U64 => {
-              let u64 = read_bytes!(u64, data, row_index);
-              row.push(RowValue { u64 });
-            }
-            ColumnType::F64 => {
-              let f64 = read_bytes!(f64, data, row_index);
-              row.push(RowValue { f64 });
+        .map(|column| Table::open_column(&partition_meta.dir, partition_meta.row_count, &column.column))
+        .collect::<Vec<TableColumn>>();
+    }
+    let mut row = Vec::<RowValue>::with_capacity(self.data_columns.len());
+    for (col_index, table_column) in self.data_columns.iter().enumerate() {
+      let data = &table_column.data;
+      match table_column.r#type {
+        ColumnType::Timestamp => {
+          let nanoseconds = match table_column.size {
+            8 => read_bytes!(i64, data, self.row_index),
+            4 => read_bytes!(u32, data, self.row_index) as i64,
+            2 => read_bytes!(u16, data, self.row_index) as i64,
+            1 => read_bytes!(u8,  data, self.row_index) as i64,
+            s => panic!(format!("Invalid column size {}", s))
+          } * table_column.resolution;
+          if col_index == 0 {
+            if nanoseconds > self.to_ts {
+              return None;
+            } else if nanoseconds < self.from_ts {
+              // TODO: binary search + rollback for first ts
+              break;
             }
           }
+          row.push(RowValue { i64: nanoseconds });
         }
-        if row.len() > 0 {
-          accumulator(row);
+        ColumnType::Currency => {
+          let f32 = read_bytes!(f32, data, self.row_index);
+          row.push(RowValue { f32 });
+        }
+        ColumnType::Symbol8 => {
+          let symbol_index = read_bytes!(u8, data, self.row_index) as usize;
+          let sym = &self.columns[col_index].symbols[symbol_index - 1];
+          row.push(RowValue { sym });
+        }
+        ColumnType::Symbol16 => {
+          let symbol_index = read_bytes!(u16, data, self.row_index) as usize;
+          let sym = &self.columns[col_index].symbols[symbol_index - 1];
+          row.push(RowValue { sym });
+        }
+        ColumnType::Symbol32 => {
+          let symbol_index = read_bytes!(u32, data, self.row_index) as usize;
+          let sym = &self.columns[col_index].symbols[symbol_index - 1];
+          row.push(RowValue { sym });
+        }
+        ColumnType::I8 => {
+          let i8 = read_bytes!(i8, data, self.row_index);
+          row.push(RowValue { i8 });
+        }
+        ColumnType::U8 => {
+          let u8 = read_bytes!(u8, data, self.row_index);
+          row.push(RowValue { u8 });
+        }
+        ColumnType::I16 => {
+          let i16 = read_bytes!(i16, data, self.row_index);
+          row.push(RowValue { i16 });
+        }
+        ColumnType::U16 => {
+          let u16 = read_bytes!(u16, data, self.row_index);
+          row.push(RowValue { u16 });
+        }
+        ColumnType::I32 => {
+          let i32 = read_bytes!(i32, data, self.row_index);
+          row.push(RowValue { i32 });
+        }
+        ColumnType::U32 => {
+          let u32 = read_bytes!(u32, data, self.row_index);
+          row.push(RowValue { u32 });
+        }
+        ColumnType::F32 => {
+          let f32 = read_bytes!(f32, data, self.row_index);
+          row.push(RowValue { f32 });
+        }
+        ColumnType::I64 => {
+          let i64 = read_bytes!(i64, data, self.row_index);
+          row.push(RowValue { i64 });
+        }
+        ColumnType::U64 => {
+          let u64 = read_bytes!(u64, data, self.row_index);
+          row.push(RowValue { u64 });
+        }
+        ColumnType::F64 => {
+          let f64 = read_bytes!(f64, data, self.row_index);
+          row.push(RowValue { f64 });
         }
       }
     }
-  }
 
-  // pub fn scan_from(&mut self, from_ts: i64, to_ts: i64) { self.scan_filters(from_ts, to_ts, vec![])}
-  // pub fn scan_all(&mut self) { self.scan_from(std::i64::MIN, std::i64::MAX) }
+    self.row_index += 1;
+    return Some(row);
+  }
 }
+

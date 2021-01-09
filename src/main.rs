@@ -2,7 +2,7 @@ use chrono::NaiveDate;
 use fastrand;
 use zdb::{
   schema::*,
-  table::{scan::RowValue, Table},
+  table::Table,
   test_symbols::SYMBOLS
 };
 
@@ -99,17 +99,18 @@ fn main() {
     let table = Table::open(&table_name).expect("Could not open table");
     let mut sum = 0.0;
 
-    table.scan(
+    let rows = table.row_iter(
       0,
       NaiveDate::from_ymd(1972, 1, 1)
         .and_hms(0, 0, 0)
         .timestamp_nanos(),
-      vec!["ts", "close"],
-      |row: Vec<RowValue>| {
-        // println!("{} {}", row[0].get_timestamp(), row[1].get_currency() as f64);
-        sum += row[1].get_currency() as f64;
-      }
+      vec!["ts", "close"]
     );
+
+    for row in rows {
+      // println!("{} {}", row[0].get_timestamp(), row[1].get_currency() as f64);
+      sum += row[1].get_currency() as f64;
+    }
     println!("Sum {}", sum);
   }
 }
