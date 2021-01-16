@@ -119,7 +119,12 @@ impl Table {
       .collect::<Vec<_>>()
   }
 
-  fn validate_args(&self, columns: &Vec<&str>, julia: &mut Julia, julia_prog: &str) -> String {
+  fn eval_julia_prog(
+    &self,
+    columns: &Vec<TableColumnMeta>,
+    julia: &mut Julia,
+    julia_prog: &str
+  ) -> String {
     // Run user program
     // TODO: sandbox julia
     let mut prog_file = temp_dir();
@@ -134,7 +139,6 @@ impl Table {
     julia.include(prog_file).unwrap();
     julia
       .dynamic_frame(|global, frame| {
-        let columns = self.get_union(&columns);
         let expected_args = SimpleVector::with_capacity(frame, columns.len()).unwrap();
         for (i, c) in columns.iter().enumerate() {
           let column_type = match c.column.r#type {
@@ -200,26 +204,39 @@ impl Table {
     mut julia: Julia,
     julia_prog: &str
   ) -> Option<Vec<u8>> {
-    let scan_errors = self.validate_args(&columns, &mut julia, julia_prog);
-    if scan_errors.is_empty() {
+    let table_columns = self.get_union(&columns);
+    let prog_errors = self.eval_julia_prog(&table_columns, &mut julia, julia_prog);
+    if prog_errors.is_empty() {
       let mut rows = self.row_iter(from_ts, to_ts, columns).peekable();
-      julia
-        .dynamic_frame(|_global, frame| {
-          Value::eval_string(frame, julia_prog).unwrap().unwrap();
-          Ok(())
-        })
-        .unwrap();
       while let Some(row) = rows.next() {
         julia
           .dynamic_frame(|global, frame| {
-            let arg1 = Value::new(frame, row[0].i64).unwrap();
-            let arg2 = Value::new(frame, row[1].f32).unwrap();
+            let mut args: Vec<Value> = Vec::with_capacity(table_columns.len());
+            for i in 0..table_columns.len() {
+              args.push(
+                match table_columns[i].column.r#type {
+                  ColumnType::I8 => Value::new(frame, row[i].i8),
+                  ColumnType::U8 => Value::new(frame, row[i].u8),
+                  ColumnType::I16 => Value::new(frame, row[i].i16),
+                  ColumnType::U16 => Value::new(frame, row[i].u16),
+                  ColumnType::I32 => Value::new(frame, row[i].i32),
+                  ColumnType::U32 => Value::new(frame, row[i].u32),
+                  ColumnType::I64 | ColumnType::Timestamp => Value::new(frame, row[i].i64),
+                  ColumnType::U64 => Value::new(frame, row[i].u64),
+                  ColumnType::F32 | ColumnType::Currency => Value::new(frame, row[i].f32),
+                  ColumnType::F64 => Value::new(frame, row[i].f64),
+                  ColumnType::Symbol8 | ColumnType::Symbol16 | ColumnType::Symbol32 => {
+                    Value::new(frame, row[i].get_symbol().clone())
+                  }
+                }
+                .unwrap()
+              );
+            }
             let accumulator = Module::main(global)
-            .function("scan")
-            .expect("Function `scan` doesn't exist")
-            .call2(frame, arg1, arg2)?
-            //.call(frame, &mut row)?
-            .expect("Ur scan goofed");
+              .function("scan")
+              .expect("Function `scan` doesn't exist")
+              .call(frame, &mut args)?
+              .expect("Ur scan goofed");
             if rows.peek().is_none() {
               Module::main(global).set_global("scan_result", accumulator);
             }
