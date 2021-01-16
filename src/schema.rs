@@ -1,9 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::{
-  fmt,
-  path::PathBuf,
-  cmp::PartialEq
-};
+use std::{cmp::PartialEq, fmt, path::PathBuf};
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq)]
 pub enum ColumnType {
@@ -100,7 +96,7 @@ impl fmt::Debug for Schema {
   }
 }
 
-impl<'a> Schema{
+impl<'a> Schema {
   pub fn new(name: &'a str) -> Self {
     Self {
       name:         name.to_owned(),
@@ -139,23 +135,27 @@ impl<'a> Schema{
   fn set_timestamp_size(&mut self) {
     // Determine lengths of timestamp columns based on partition_by and their resolution
     let partition_by = self.partition_by;
-    self.columns.iter_mut().filter(|col| col.r#type == ColumnType::Timestamp).for_each(|mut col| {
-      let nanoseconds_in_partition = match partition_by {
-        PartitionBy::Day  => 24 * 60 * 60 * 1_000_000_000,
-        PartitionBy::Month=> 24 * 60 * 60 * 1_000_000_000 * 31,
-        PartitionBy::Year => 24 * 60 * 60 * 1_000_000_000 * 365,
-        PartitionBy::None => i64::MAX
-      };
-      col.size = match nanoseconds_in_partition / col.resolution {
-        0..=256            => 1,
-        257..=65536        => 2,
-        65537..=4294967296 => 4,
-        _                  => {
-          // Don't bother rounding to be compatible with writing i64s
-          col.resolution = 1;
-          8
-        }
-      };
-    });
+    self
+      .columns
+      .iter_mut()
+      .filter(|col| col.r#type == ColumnType::Timestamp)
+      .for_each(|mut col| {
+        let nanoseconds_in_partition = match partition_by {
+          PartitionBy::Day => 24 * 60 * 60 * 1_000_000_000,
+          PartitionBy::Month => 24 * 60 * 60 * 1_000_000_000 * 31,
+          PartitionBy::Year => 24 * 60 * 60 * 1_000_000_000 * 365,
+          PartitionBy::None => i64::MAX
+        };
+        col.size = match nanoseconds_in_partition / col.resolution {
+          0..=256 => 1,
+          257..=65536 => 2,
+          65537..=4294967296 => 4,
+          _ => {
+            // Don't bother rounding to be compatible with writing i64s
+            col.resolution = 1;
+            8
+          }
+        };
+      });
   }
 }

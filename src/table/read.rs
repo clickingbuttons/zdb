@@ -106,11 +106,7 @@ fn get_column_data(path: &PathBuf, row_count: usize, column_size: usize) -> (Fil
 }
 
 impl Table {
-  pub fn open_column(
-    partition_path: &PathBuf,
-    row_count: usize,
-    column: &Column
-  ) -> TableColumn {
+  pub fn open_column(partition_path: &PathBuf, row_count: usize, column: &Column) -> TableColumn {
     let path = get_col_path(&partition_path, &column);
     let (file, data) = get_column_data(&path, row_count, column.size);
     TableColumn {

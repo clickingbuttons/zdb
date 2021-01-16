@@ -1,26 +1,22 @@
 module ScanValidate
 using Printf;
 
-function validate_args(fn_string::String, expected_args::Core.SimpleVector)::String
-  try
-    fn_args = Meta.parse(fn_string).args[1].args
-    if length(expected_args) != length(fn_args) - 1
-      return @sprintf("Queried for %d cols but function `scan` takes %d", args, fn_args)
-    end
-    for (index, expected_arg) in enumerate(expected_args)
-      actual_arg = fn_args[index + 1].args
-      if length(actual_arg) == 1
-        return @sprintf("Argument %s to function `scan` must have correct type annotation", index)
-      end
-      actual_arg = string(actual_arg[2])
-      if expected_arg != actual_arg
-        return @sprintf("Expected column %d to be of type %s but got %s in function `scan`", index - 1, expected_arg, actual_arg)
-      end
-    end
-    return ""
-  catch err
-    return sprint(showerror, err, backtrace())
+# TODO: Return (num_valid_args, error_message)
+function validate_args(scan::Function, expected_args::Core.SimpleVector)::String
+  fn_args = Base.arg_decl_parts(first(methods(scan)))[2]
+  # We already know the function name is "scan"
+  popfirst!(fn_args)
+  if length(expected_args) != length(fn_args)
+    return @sprintf("Expected `scan` to take %d args but it's defined to take %d", length(expected_args), length(fn_args))
   end
+  for (expected_arg, (arg_name, actual_arg)) in zip(expected_args, fn_args)
+    if expected_arg != actual_arg
+      return @sprintf("Expected arg %s to be of type %s but got \"%s\" in function `scan`", arg_name, expected_arg, actual_arg)
+    end
+  end
+  return ""
 end
+# scan(a::UInt8, b::UInt8)=a
+# println(validate_args(scan, Core.svec("UInt8", "UInt8")))
 end
 

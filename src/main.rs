@@ -1,11 +1,7 @@
 use chrono::NaiveDate;
 use fastrand;
-use zdb::{
-  schema::*,
-  table::Table,
-  test_symbols::SYMBOLS
-};
 use jlrs::prelude::*;
+use zdb::{schema::*, table::Table, test_symbols::SYMBOLS};
 
 static ROW_COUNT: usize = 24 * 60 * 60 + 100;
 
@@ -119,20 +115,31 @@ fn main() {
     println!("Scanning rows with Julia");
     let table = Table::open(&table_name).expect("Could not open table");
     let mut julia = unsafe { Julia::init(1024).unwrap() };
-    julia.include("ScanValidate.jl").expect("Could not load ScanValidate.jl");
-    julia.dynamic_frame(|_global, frame| {
-      Value::eval_string(frame, "using Serialization").unwrap().unwrap();
-      Ok(())
-    }).unwrap();
-    let bytes = table.scan_julia(
-      0,
-      NaiveDate::from_ymd(1972, 1, 1)
-        .and_hms(0, 0, 0)
-        .timestamp_nanos(),
-      vec!["ts", "close"],
-      julia,
-      "scan(ts::Int64, close::Float32) = close"
-    );
+    julia
+      .include("ScanValidate.jl")
+      .expect("Could not load ScanValidate.jl");
+    julia
+      .dynamic_frame(|_global, frame| {
+        Value::eval_string(frame, "using Serialization")
+          .unwrap()
+          .unwrap();
+        Ok(())
+      })
+      .unwrap();
+    let bytes = unsafe {
+      table.scan_julia(
+        0,
+        NaiveDate::from_ymd(1972, 1, 1)
+          .and_hms(0, 0, 0)
+          .timestamp_nanos(),
+        vec!["ts", "close"],
+        julia,
+        "sum = 0.0
+        function scan(ts::Int64, close::Float32)
+          global sum += close
+        end"
+      )
+    };
     println!("Sum {:?}", bytes);
   }
 }

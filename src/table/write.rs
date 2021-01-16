@@ -138,7 +138,7 @@ impl Table {
     };
     let column = &self.columns[self.column_index];
     match column.r#type {
-      ColumnType::Symbol8 =>  self.put_u8(index as u8),
+      ColumnType::Symbol8 => self.put_u8(index as u8),
       ColumnType::Symbol16 => self.put_u16(index as u16),
       ColumnType::Symbol32 => self.put_u32(index as u32),
       bad_type => panic!(format!("Unsupported column type {:?}", bad_type))

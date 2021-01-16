@@ -28,12 +28,12 @@ pub struct TableColumnSymbols {
 
 #[derive(Debug)]
 pub struct TableColumn {
-  pub name:   String,
-  pub file:   File,
-  pub data:   memmap::MmapMut,
-  pub path:   PathBuf,
-  pub r#type: ColumnType,
-  pub size:   usize,
+  pub name:       String,
+  pub file:       File,
+  pub data:       memmap::MmapMut,
+  pub path:       PathBuf,
+  pub r#type:     ColumnType,
+  pub size:       usize,
   pub resolution: i64
 }
 
@@ -68,7 +68,7 @@ pub struct Table {
   #[serde(skip)]
   cur_partition: String,
   #[serde(skip)]
-  pub cur_partition_meta: PartitionMeta,
+  pub cur_partition_meta: PartitionMeta
 }
 
 fn get_data_path(name: &str) -> PathBuf {
