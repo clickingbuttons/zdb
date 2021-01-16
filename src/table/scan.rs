@@ -5,6 +5,8 @@ use crate::{
 };
 use chrono::NaiveDateTime;
 use std::{cmp::max, convert::TryInto, fmt::Debug, mem::size_of};
+use jlrs::prelude::*;
+use jlrs::value::simple_vector::*;
 
 // Important that this fits in single register.
 #[derive(Copy, Clone)]
@@ -25,6 +27,12 @@ pub union RowValue<'a> {
 impl Debug for RowValue<'_> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.write_str(&format!("{:x}", self.get_i64()))
+  }
+}
+
+impl AsMut<i64> for RowValue<'_> {
+  fn as_mut(&mut self) -> &mut i64 {
+    unsafe { &mut self.i64 }
   }
 }
 
@@ -87,6 +95,7 @@ macro_rules! read_bytes {
   }};
 }
 
+#[derive(Debug)]
 struct TableColumnMeta<'a> {
   column:  Column,
   symbols: &'a Vec<String>
@@ -111,13 +120,10 @@ impl Table {
       .collect::<Vec<_>>()
   }
 
-  // pub fn scan_from(&mut self, from_ts: i64, to_ts: i64) { self.scan_filters(from_ts, to_ts, vec![])}
-  // pub fn scan_all(&mut self) { self.scan_from(std::i64::MIN, std::i64::MAX) }
-
   /*
    * juliaFunc = "
    *   acc = Float32(0);
-   *   function f(x::Int16, y::Float32)
+   *   function scan(x::Int16, y::Float32)
    *     global acc += x;
    *     global acc += y;
    *     return acc;
@@ -130,13 +136,89 @@ impl Table {
    *
    * 2. Return serialized val casted to Vec<u8>
    *   using Serialization
-   *   serialize(io, juliaFuncLastCall(row)).data
+   *   io = IOBuffer()
+   *   serialize(io, juliaFuncLastCall(row))
+   *   io.data
    * 
    * Then client can call
    *   deserialize(IOBuffer(take!(io)))
    */
-  //pub fn scan_julia(&self, from_ts: i64, to_ts: i64, columns: Vec<&str>, julia_prog: String) {
-  //}
+  pub fn scan_julia(&self, from_ts: i64, to_ts: i64, columns: Vec<&str>, mut julia: Julia, julia_prog: &str) -> Option<Vec<u8>> {
+    unsafe {
+      let prog_errors = julia.dynamic_frame(|global, frame| {
+        let columns = self.get_union(&columns);
+        let expected_args = SimpleVector::with_capacity(frame, columns.len()).unwrap();
+        for (i, c) in columns.iter().enumerate() {
+          let column_type = match c.column.r#type {
+            ColumnType::I8  => "Int8",
+            ColumnType::I16 => "Int16",
+            ColumnType::I32 => "Int32",
+            ColumnType::I64 | ColumnType::Timestamp => "Int64",
+            ColumnType::U8  => "UInt8",
+            ColumnType::U16 => "UInt16",
+            ColumnType::U32 => "UInt32",
+            ColumnType::U64 => "UInt64",
+            ColumnType::Symbol8 | ColumnType::Symbol16 | ColumnType::Symbol32 => "String",
+            ColumnType::F32 | ColumnType::Currency => "Float32",
+            ColumnType::F64 => "Float64"
+          };
+
+          expected_args.set(i, Value::new(frame, column_type).unwrap()).unwrap();
+        }
+        let fn_string = Value::new(frame, julia_prog).unwrap();
+        Module::main(global)
+          .submodule("ScanValidate")?
+          .function("validate_args")?
+          .call2(frame, fn_string, expected_args.as_value())
+          .expect("Errorz")
+          .expect("ScanZDB goofed")
+          .cast::<String>()
+      }).unwrap();
+
+      println!("julia_fn_errors {}", prog_errors);
+      if prog_errors.is_empty() {
+        let mut rows = self.row_iter(from_ts, to_ts, columns).peekable();
+        julia.dynamic_frame(|_global, frame| {
+          Value::eval_string(frame, julia_prog)
+            .unwrap()
+            .unwrap();
+          Ok(())
+        }).unwrap();
+        while let Some(row) = rows.next() {
+          julia.dynamic_frame(|global, frame| {
+            let arg1 = Value::new(frame, row[0].i64).unwrap(); 
+            let arg2 = Value::new(frame, row[1].f32).unwrap();
+            let accumulator = Module::main(global)
+              .function("scan")
+              .expect("Function `scan` doesn't exist")
+              .call2(frame, arg1, arg2)?
+              //.call(frame, &mut row)?
+              .expect("Ur scan goofed");
+            if rows.peek().is_none() {
+              Module::main(global)
+                .set_global("scan_result", accumulator);
+            }
+            Ok(())
+          }).unwrap();
+        }
+        let res: Vec<u8> = julia.dynamic_frame(|global, frame| {
+          let io = Value::eval_string(frame, "IOBuffer()").unwrap().unwrap();
+          let res = Module::main(global).global("scan_result").unwrap();
+          Module::main(global)
+            .function("serialize")
+            .expect("Function `serialize` doesn't exist")
+            .call2(frame, io, res)?
+            .expect("Can't serialize scan's value");
+          let bytes = io.get_field(frame, "data").unwrap().cast::<Array>().unwrap();
+          let bytes = bytes.inline_data(frame).unwrap();
+          let bytes: Vec<u8> = bytes.as_slice().to_vec();
+          Ok(bytes)
+        }).unwrap();
+        return Some(res);
+      }
+    }
+    None
+  }
 
   pub fn row_iter(&self, from_ts: i64, to_ts: i64, columns: Vec<&str>) -> RowIterator {
     let mut partitions = self

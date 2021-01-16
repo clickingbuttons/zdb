@@ -5,6 +5,7 @@ use zdb::{
   table::Table,
   test_symbols::SYMBOLS
 };
+use jlrs::prelude::*;
 
 static ROW_COUNT: usize = 24 * 60 * 60 + 100;
 
@@ -112,5 +113,26 @@ fn main() {
       sum += row[1].get_currency() as f64;
     }
     println!("Sum {}", sum);
+  }
+
+  {
+    println!("Scanning rows with Julia");
+    let table = Table::open(&table_name).expect("Could not open table");
+    let mut julia = unsafe { Julia::init(1024).unwrap() };
+    julia.include("ScanValidate.jl").expect("Could not load ScanValidate.jl");
+    julia.dynamic_frame(|_global, frame| {
+      Value::eval_string(frame, "using Serialization").unwrap().unwrap();
+      Ok(())
+    }).unwrap();
+    let bytes = table.scan_julia(
+      0,
+      NaiveDate::from_ymd(1972, 1, 1)
+        .and_hms(0, 0, 0)
+        .timestamp_nanos(),
+      vec!["ts", "close"],
+      julia,
+      "scan(ts::Int64, close::Float32) = close"
+    );
+    println!("Sum {:?}", bytes);
   }
 }

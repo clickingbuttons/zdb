@@ -68,7 +68,7 @@ pub struct Table {
   #[serde(skip)]
   cur_partition: String,
   #[serde(skip)]
-  pub cur_partition_meta: PartitionMeta
+  pub cur_partition_meta: PartitionMeta,
 }
 
 fn get_data_path(name: &str) -> PathBuf {
