@@ -87,17 +87,17 @@ impl FormatCurrency for f32 {
   }
 }
 
-macro_rules! read_bytes {
-  ($_type:ty, $bytes:expr, $i:expr) => {{
-    let size = size_of::<$_type>();
-    <$_type>::from_le_bytes($bytes[$i * size..$i * size + size].try_into().unwrap())
-  }};
-}
-
 #[derive(Debug)]
 struct TableColumnMeta<'a> {
   column:  Column,
   symbols: &'a Vec<String>
+}
+
+#[derive(Debug)]
+pub enum JuliaQueryError {
+  JuliaError(JlrsError),
+  JuliaHeapError(Box<JlrsError>),
+  ArgMismatch(String)
 }
 
 impl Table {
@@ -124,8 +124,7 @@ impl Table {
     columns: &Vec<TableColumnMeta>,
     julia: &mut Julia,
     julia_prog: &str
-  ) -> String {
-    // Run user program
+  ) -> Option<JuliaQueryError> {
     // TODO: sandbox julia
     let mut prog_file = temp_dir();
     prog_file.push(format!(
@@ -137,9 +136,9 @@ impl Table {
     ));
     fs::write(&prog_file, julia_prog).expect("Unable to write user program file");
     julia.include(prog_file).unwrap();
-    julia
+    let err_string = julia
       .dynamic_frame(|global, frame| {
-        let expected_args = SimpleVector::with_capacity(frame, columns.len()).unwrap();
+        let expected_args = SimpleVector::with_capacity(frame, columns.len())?;
         for (i, c) in columns.iter().enumerate() {
           let column_type = match c.column.r#type {
             ColumnType::I8 => "Int8",
@@ -157,45 +156,27 @@ impl Table {
 
           unsafe {
             expected_args
-              .set(i, Value::new(frame, column_type).unwrap())
+              .set(i, Value::new(frame, column_type)?)
               .unwrap();
           }
         }
-        let scan_fn = Module::main(global).function("scan").unwrap();
+        let scan_fn = Module::main(global).function("scan")?;
 
         Module::main(global)
           .submodule("ScanValidate")?
           .function("validate_args")?
-          .call2(frame, scan_fn, expected_args.as_value())
-          .expect("Errorz")
+          .call2(frame, scan_fn, expected_args.as_value())?
           .expect("ScanZDB goofed")
           .cast::<String>()
       })
-      .unwrap()
+      .unwrap();
+    match err_string.is_empty() {
+      true => None,
+      false => Some(JuliaQueryError::ArgMismatch(err_string))
+    }
   }
 
-  // juliaFunc = "
-  //   acc = Float32(0);
-  //   function scan(x::Int16, y::Float32)
-  //     global acc += x;
-  //     global acc += y;
-  //     return acc;
-  //   end
-  // "
-  //
-  // 1. Verify args match column types:
-  //   Meta.parse(juliaFunc.split(";").last())).args[1].args[1].args[2].args[2] === :Int16
-  //   Meta.parse(juliaFunc.split(";").last())).args[1].args[1].args[3].args[2] === :Float32
-  //
-  // 2. Return serialized val casted to Vec<u8>
-  //   using Serialization
-  //   io = IOBuffer()
-  //   serialize(io, juliaFuncLastCall(row))
-  //   io.data
-  //
-  // Then client can call
-  //   deserialize(IOBuffer(take!(io)))
-  //   deserialize(IOBuffer(UInt8[bytes]))
+  // Client can call deserialize(IOBuffer(UInt8[bytes]))
   pub unsafe fn scan_julia(
     &self,
     from_ts: i64,
@@ -203,69 +184,68 @@ impl Table {
     columns: Vec<&str>,
     mut julia: Julia,
     julia_prog: &str
-  ) -> Option<Vec<u8>> {
+  ) -> Result<Vec<u8>, JuliaQueryError> {
     let table_columns = self.get_union(&columns);
-    let prog_errors = self.eval_julia_prog(&table_columns, &mut julia, julia_prog);
-    if prog_errors.is_empty() {
-      let mut rows = self.row_iter(from_ts, to_ts, columns).peekable();
-      while let Some(row) = rows.next() {
-        julia
-          .dynamic_frame(|global, frame| {
-            let mut args: Vec<Value> = Vec::with_capacity(table_columns.len());
-            for i in 0..table_columns.len() {
-              args.push(
-                match table_columns[i].column.r#type {
-                  ColumnType::I8 => Value::new(frame, row[i].i8),
-                  ColumnType::U8 => Value::new(frame, row[i].u8),
-                  ColumnType::I16 => Value::new(frame, row[i].i16),
-                  ColumnType::U16 => Value::new(frame, row[i].u16),
-                  ColumnType::I32 => Value::new(frame, row[i].i32),
-                  ColumnType::U32 => Value::new(frame, row[i].u32),
-                  ColumnType::I64 | ColumnType::Timestamp => Value::new(frame, row[i].i64),
-                  ColumnType::U64 => Value::new(frame, row[i].u64),
-                  ColumnType::F32 | ColumnType::Currency => Value::new(frame, row[i].f32),
-                  ColumnType::F64 => Value::new(frame, row[i].f64),
-                  ColumnType::Symbol8 | ColumnType::Symbol16 | ColumnType::Symbol32 => {
-                    Value::new(frame, row[i].get_symbol().clone())
-                  }
-                }
-                .unwrap()
-              );
-            }
-            let accumulator = Module::main(global)
-              .function("scan")
-              .expect("Function `scan` doesn't exist")
-              .call(frame, &mut args)?
-              .expect("Ur scan goofed");
-            if rows.peek().is_none() {
-              Module::main(global).set_global("scan_result", accumulator);
-            }
-            Ok(())
-          })
-          .unwrap();
-      }
-      let res: Vec<u8> = julia
-        .dynamic_frame(|global, frame| {
-          let io = Value::eval_string(frame, "IOBuffer()").unwrap().unwrap();
-          let res = Module::main(global).global("scan_result").unwrap();
-          Module::main(global)
-            .function("serialize")
-            .expect("Function `serialize` doesn't exist")
-            .call2(frame, io, res)?
-            .expect("Can't serialize scan's value");
-          let bytes = io
-            .get_field(frame, "data")
-            .unwrap()
-            .cast::<Array>()
-            .unwrap();
-          let bytes = bytes.inline_data(frame).unwrap();
-          let bytes: Vec<u8> = bytes.as_slice().to_vec();
-          Ok(bytes)
-        })
-        .unwrap();
-      return Some(res);
+    if let Some(prog_errors) = self.eval_julia_prog(&table_columns, &mut julia, julia_prog) {
+      return Err(prog_errors);
     }
-    None
+    let mut rows = self.row_iter(from_ts, to_ts, columns).peekable();
+    while let Some(row) = rows.next() {
+      if let Err(scan_error) = julia.dynamic_frame(|global, frame| {
+        let mut args = Vec::<Value>::with_capacity(table_columns.len());
+        for i in 0..table_columns.len() {
+          args.push(
+            match table_columns[i].column.r#type {
+              ColumnType::I8 => Value::new(frame, row[i].i8),
+              ColumnType::U8 => Value::new(frame, row[i].u8),
+              ColumnType::I16 => Value::new(frame, row[i].i16),
+              ColumnType::U16 => Value::new(frame, row[i].u16),
+              ColumnType::I32 => Value::new(frame, row[i].i32),
+              ColumnType::U32 => Value::new(frame, row[i].u32),
+              ColumnType::I64 | ColumnType::Timestamp => Value::new(frame, row[i].i64),
+              ColumnType::U64 => Value::new(frame, row[i].u64),
+              ColumnType::F32 | ColumnType::Currency => Value::new(frame, row[i].f32),
+              ColumnType::F64 => Value::new(frame, row[i].f64),
+              ColumnType::Symbol8 | ColumnType::Symbol16 | ColumnType::Symbol32 => {
+                Value::new(frame, row[i].get_symbol().clone())
+              }
+            }
+            .unwrap()
+          );
+        }
+        let accumulator = Module::main(global)
+          .function("scan")
+          .expect("Function `scan` doesn't exist")
+          .call(frame, &mut args)?
+          .expect("Function `scan` threw an exception");
+        if rows.peek().is_none() {
+          Module::main(global).set_global("scan_result", accumulator);
+        }
+        Ok(())
+      }) {
+        return Err(JuliaQueryError::JuliaHeapError(scan_error));
+      }
+    }
+    let res: Vec<u8> = julia
+      .dynamic_frame(|global, frame| {
+        let io = Value::eval_string(frame, "IOBuffer()").unwrap().unwrap();
+        let res = Module::main(global).global("scan_result").unwrap();
+        Module::main(global)
+          .function("serialize")
+          .expect("Function `serialize` doesn't exist")
+          .call2(frame, io, res)?
+          .expect("Can't serialize scan's value");
+        let bytes = io
+          .get_field(frame, "data")
+          .unwrap()
+          .cast::<Array>()
+          .unwrap();
+        let bytes = bytes.inline_data(frame).unwrap();
+        let bytes: Vec<u8> = bytes.as_slice().to_vec();
+        Ok(bytes)
+      })
+      .unwrap();
+    Ok(res)
   }
 
   pub fn row_iter(&self, from_ts: i64, to_ts: i64, columns: Vec<&str>) -> RowIterator {
@@ -279,12 +259,10 @@ impl Table {
       .collect::<Vec<&PartitionMeta>>();
     partitions.sort_by_key(|partition_meta| partition_meta.from_ts);
 
-    let columns = self.get_union(&columns);
-
     RowIterator {
       from_ts,
       to_ts,
-      columns,
+      columns: self.get_union(&columns),
       partitions,
       partition_index: 0,
       data_columns: vec![],
@@ -301,6 +279,13 @@ pub struct RowIterator<'a> {
   partition_index: usize,
   data_columns: Vec<TableColumn>,
   row_index: usize
+}
+
+macro_rules! read_bytes {
+  ($_type:ty, $bytes:expr, $i:expr) => {{
+    let size = size_of::<$_type>();
+    <$_type>::from_le_bytes($bytes[$i * size..$i * size + size].try_into().unwrap())
+  }};
 }
 
 impl<'a> Iterator for RowIterator<'a> {
@@ -350,7 +335,7 @@ impl<'a> Iterator for RowIterator<'a> {
           }
           row.push(RowValue { i64: nanoseconds });
         }
-        ColumnType::Currency => {
+        ColumnType::Currency | ColumnType::F32 => {
           let f32 = read_bytes!(f32, data, self.row_index);
           row.push(RowValue { f32 });
         }
@@ -392,10 +377,6 @@ impl<'a> Iterator for RowIterator<'a> {
         ColumnType::U32 => {
           let u32 = read_bytes!(u32, data, self.row_index);
           row.push(RowValue { u32 });
-        }
-        ColumnType::F32 => {
-          let f32 = read_bytes!(f32, data, self.row_index);
-          row.push(RowValue { f32 });
         }
         ColumnType::I64 => {
           let i64 = read_bytes!(i64, data, self.row_index);

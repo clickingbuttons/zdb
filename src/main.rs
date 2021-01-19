@@ -1,6 +1,7 @@
 use chrono::NaiveDate;
 use fastrand;
 use jlrs::prelude::*;
+use std::time::{Duration, Instant};
 use zdb::{schema::*, table::Table, test_symbols::SYMBOLS};
 
 static ROW_COUNT: usize = 24 * 60 * 60 + 100;
@@ -91,6 +92,7 @@ fn main() {
     write_rows(&mut table, rows);
   }
 
+  let now = Instant::now();
   {
     println!("Scanning rows");
     let table = Table::open(&table_name).expect("Could not open table");
@@ -105,15 +107,19 @@ fn main() {
     );
 
     for row in rows {
-      // println!("{} {}", row[0].get_timestamp(), row[1].get_currency() as f64);
+      println!(
+        "{} {}",
+        row[0].get_timestamp(),
+        row[1].get_currency() as f64
+      );
       sum += row[1].get_currency() as f64;
     }
     println!("Sum {}", sum);
   }
+  println!("{}ms", now.elapsed().as_millis());
 
   {
     println!("Scanning rows with Julia");
-    let table = Table::open(&table_name).expect("Could not open table");
     let mut julia = unsafe { Julia::init(1024).unwrap() };
     julia
       .include("ScanValidate.jl")
@@ -126,6 +132,8 @@ fn main() {
         Ok(())
       })
       .unwrap();
+    let now = Instant::now();
+    let table = Table::open(&table_name).expect("Could not open table");
     let bytes = unsafe {
       table.scan_julia(
         0,
@@ -141,5 +149,6 @@ fn main() {
       )
     };
     println!("Sum {:?}", bytes);
+    println!("{}ms", now.elapsed().as_millis());
   }
 }
