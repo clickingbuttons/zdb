@@ -184,8 +184,7 @@ impl Table {
     }
     println!("{}ms to eval", now.elapsed().as_millis());
     let now = Instant::now();
-    for (i, partitions) in partition_iter.enumerate() {
-      let mut partitions = partitions;
+    for (i, mut partitions) in partition_iter.enumerate() {
       if let Err(scan_error) = julia.dynamic_frame(|global, frame| {
         let mut args = partitions.iter_mut()
           .map(|partition| {
