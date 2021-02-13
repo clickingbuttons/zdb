@@ -61,6 +61,7 @@ impl Table {
 
   pub fn put_timestamp(&mut self, mut val: i64) {
     let resolution = self.schema.columns[self.column_index].resolution;
+    // Round off for partition calculation
     val = val / resolution * resolution;
     if self.column_index == 0 {
       // New partition?
@@ -87,14 +88,14 @@ impl Table {
             self.dir_index = if is_first_partition {
               0
             } else {
-              (self.dir_index + 1) % self.schema.data_dirs.len()
+              (self.dir_index + 1) % self.schema.partition_dirs.len()
             };
-            let mut partition_dir = self.schema.data_dirs[self.dir_index].clone();
+            let mut partition_dir = self.schema.partition_dirs[self.dir_index].clone();
             partition_dir.push(&self.schema.name);
             partition_dir.push(&self.cur_partition);
             let date = val.to_naive_date_time();
             let min_ts = self.get_partition_ts(date, 0);
-            let max_ts = self.get_partition_ts(date, 1);
+            let max_ts = self.get_partition_ts(date, 1) - 1;
             PartitionMeta {
               dir: partition_dir,
               from_ts: val,
@@ -115,9 +116,9 @@ impl Table {
     }
     match self.schema.columns[self.column_index].size {
       8 => self.put_i64(val),
-      4 => self.put_u32((val / resolution) as u32),
-      2 => self.put_u16((val / resolution) as u16),
-      1 => self.put_u8((val / resolution) as u8),
+      4 => self.put_u32(((val - self.cur_partition_meta.min_ts) / resolution) as u32),
+      2 => self.put_u16(((val - self.cur_partition_meta.min_ts) / resolution) as u16),
+      1 => self.put_u8(((val - self.cur_partition_meta.min_ts) / resolution) as u8),
       s => panic!(format!("Invalid column size {}", s))
     };
   }

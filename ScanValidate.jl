@@ -3,7 +3,7 @@ using Printf;
 
 # TODO: Return (num_valid_args, error_message)
 function validate_args(scan::Function, expected_args::Core.SimpleVector)::String
-  fn_args = Base.arg_decl_parts(first(methods(scan)))[2]
+  fn_args = Base.arg_decl_parts(last(methods(scan).ms))[2]
   # We already know the function name is "scan"
   popfirst!(fn_args)
   if length(expected_args) != length(fn_args)
@@ -16,7 +16,7 @@ function validate_args(scan::Function, expected_args::Core.SimpleVector)::String
   end
   return ""
 end
-# scan(a::UInt8, b::UInt8)=a
+# scan(a::UInt8, b::UInt8, acc::UInt64=UInt64(0))::UInt64 = a + b + c
 # println(validate_args(scan, Core.svec("UInt8", "UInt8")))
 end
 

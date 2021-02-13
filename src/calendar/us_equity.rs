@@ -104,7 +104,7 @@ pub fn is_market_open(date: &NaiveDate) -> bool {
     // Ronald Reagan dead at 93
     // https://money.cnn.com/2004/06/11/markets/reagan_closings/index.htm
     NaiveDate::from_ymd(2004, 6, 11),
-    // National Day of Mourning for Gerald R. Ford
+    // Gerald R. Ford dead at 93
     // https://georgewbush-whitehouse.archives.gov/news/releases/2006/12/20061228-2.html
     NaiveDate::from_ymd(2007, 1, 2),
     // Hurricane Sandy

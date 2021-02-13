@@ -92,7 +92,7 @@ fn get_column_data(path: &PathBuf, row_count: usize, column_size: usize) -> (Fil
     .open(&path)
     .unwrap_or_else(|_| panic!("Unable to open file {:?}", path));
 
-  let init_size = (row_count + 1) * column_size;
+  let init_size = row_count * column_size;
   file
     .set_len(init_size as u64)
     .unwrap_or_else(|_| panic!("Could not truncate {:?} to {}", path, init_size));

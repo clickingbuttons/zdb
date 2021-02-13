@@ -1,62 +1,19 @@
 use crate::{
-  calendar::ToNaiveDateTime,
   schema::{Column, ColumnType},
   table::{PartitionMeta, Table, TableColumn}
 };
-use chrono::{offset, NaiveDateTime};
+use chrono::offset;
 use jlrs::{prelude::*, value::simple_vector::SimpleVector};
 use std::{
-  cmp::max, convert::TryInto, env::temp_dir, fmt::Debug, fs, mem::size_of, process, thread
+  cmp::max, env::temp_dir, fmt::Debug, fs, process, slice::from_raw_parts_mut, thread, time::Instant
 };
-
-// Important that this fits in single register.
-#[derive(Copy, Clone)]
-pub union RowValue<'a> {
-  pub sym: &'a String,
-  pub i8:  i8,
-  pub u8:  u8,
-  pub i16: i16,
-  pub u16: u16,
-  pub i32: i32,
-  pub u32: u32,
-  pub f32: f32,
-  pub i64: i64,
-  pub u64: u64,
-  pub f64: f64
-}
-
-impl Debug for RowValue<'_> {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    f.write_str(&format!("{:x}", self.get_i64()))
-  }
-}
-
-impl AsMut<i64> for RowValue<'_> {
-  fn as_mut(&mut self) -> &mut i64 { unsafe { &mut self.i64 } }
-}
-
-impl RowValue<'_> {
-  pub fn get_timestamp(&self) -> NaiveDateTime {
-    let nanoseconds = unsafe { self.i64 };
-    nanoseconds.to_naive_date_time()
-  }
-
-  pub fn get_currency(&self) -> f32 { unsafe { self.f32 } }
-
-  pub fn get_symbol(&self) -> &String { unsafe { self.sym } }
-
-  pub fn get_i32(&self) -> i32 { unsafe { self.i32 } }
-
-  pub fn get_u32(&self) -> u32 { unsafe { self.u32 } }
-
-  pub fn get_f32(&self) -> f32 { unsafe { self.f32 } }
-
-  pub fn get_i64(&self) -> i64 { unsafe { self.i64 } }
-
-  pub fn get_u64(&self) -> u64 { unsafe { self.u64 } }
-
-  pub fn get_f64(&self) -> f64 { unsafe { self.f64 } }
-}
+use jlrs::traits::IntoJulia;
+use jlrs::jl_sys_export::{jl_ptr_to_array_1d, jl_apply_array_type, jl_value_t};
+use jlrs::jl_sys_export::{
+    jl_datatype_t, jl_float32_type, jl_float64_type, jl_int16_type,
+    jl_int32_type, jl_int64_type, jl_int8_type, jl_uint16_type, jl_uint32_type, jl_uint64_type,
+    jl_uint8_type
+};
 
 pub trait FormatCurrency {
   fn format_currency(self, sig_figs: usize) -> String;
@@ -119,6 +76,28 @@ impl Table {
       .collect::<Vec<_>>()
   }
 
+  pub fn partition_iter(&self, from_ts: i64, to_ts: i64, columns: Vec<&str>) -> PartitionIterator {
+    let mut partitions = self
+      .partition_meta
+      .iter()
+      .map(|(_partition_dir, partition_meta)| partition_meta)
+      .filter(|partition_meta| {
+        from_ts >= partition_meta.from_ts || to_ts > partition_meta.from_ts
+      })
+      .collect::<Vec<&PartitionMeta>>();
+    partitions.sort_by_key(|partition_meta| partition_meta.from_ts);
+    let ts_column = self.schema.columns[0].clone();
+
+    PartitionIterator {
+      from_ts,
+      to_ts,
+      ts_column,
+      columns: self.get_union(&columns),
+      partitions,
+      partition_index: 0
+    }
+  }
+
   fn eval_julia_prog(
     &self,
     columns: &Vec<TableColumnMeta>,
@@ -135,23 +114,31 @@ impl Table {
       offset::Local::now()
     ));
     fs::write(&prog_file, julia_prog).expect("Unable to write user program file");
+    println!("2");
     julia.include(prog_file).unwrap();
+    println!("3");
     let err_string = julia
       .dynamic_frame(|global, frame| {
         let expected_args = SimpleVector::with_capacity(frame, columns.len())?;
         for (i, c) in columns.iter().enumerate() {
           let column_type = match c.column.r#type {
-            ColumnType::I8 => "Int8",
-            ColumnType::I16 => "Int16",
-            ColumnType::I32 => "Int32",
-            ColumnType::I64 | ColumnType::Timestamp => "Int64",
-            ColumnType::U8 => "UInt8",
-            ColumnType::U16 => "UInt16",
-            ColumnType::U32 => "UInt32",
-            ColumnType::U64 => "UInt64",
-            ColumnType::Symbol8 | ColumnType::Symbol16 | ColumnType::Symbol32 => "String",
-            ColumnType::F32 | ColumnType::Currency => "Float32",
-            ColumnType::F64 => "Float64"
+            ColumnType::I8 => "Array{Int8,1}",
+            ColumnType::I16 => "Array{Int16,1}",
+            ColumnType::I32 => "Array{Int32,1}",
+            ColumnType::I64=> "Array{Int64,1}",
+            ColumnType::U8 | ColumnType::Symbol8 => "Array{UInt8,1}",
+            ColumnType::U16 | ColumnType::Symbol16 => "Array{UInt16,1}",
+            ColumnType::U32 | ColumnType::Symbol32 => "Array{UInt32,1}",
+            ColumnType::U64 => "Array{UInt64,1}",
+            ColumnType::F32 | ColumnType::Currency => "Array{Float32,1}",
+            ColumnType::F64 => "Array{Float64,1}",
+            ColumnType::Timestamp => match c.column.size {
+              8 => "Array{UInt64}",
+              4 => "Array{UInt32}",
+              2 => "Array{UInt16}",
+              1 => "Array{UInt8}",
+              _ => panic!("Invalid timestamp column size")
+            }
           };
 
           unsafe {
@@ -182,50 +169,40 @@ impl Table {
     from_ts: i64,
     to_ts: i64,
     columns: Vec<&str>,
-    mut julia: Julia,
+    julia: &mut Julia,
     julia_prog: &str
   ) -> Result<Vec<u8>, JuliaQueryError> {
-    let table_columns = self.get_union(&columns);
-    if let Some(prog_errors) = self.eval_julia_prog(&table_columns, &mut julia, julia_prog) {
+    let now = Instant::now();
+    let partition_iter = self.partition_iter(from_ts, to_ts, columns);
+    let partition_iter_len = partition_iter.partitions.len();
+    println!("1");
+    if let Some(prog_errors) = self.eval_julia_prog(&partition_iter.columns, julia, julia_prog)
+    {
       return Err(prog_errors);
     }
-    let mut rows = self.row_iter(from_ts, to_ts, columns).peekable();
-    while let Some(row) = rows.next() {
+    println!("{}ms to eval", now.elapsed().as_millis());
+    let now = Instant::now();
+    for (i, partitions) in partition_iter.enumerate() {
       if let Err(scan_error) = julia.dynamic_frame(|global, frame| {
-        let mut args = Vec::<Value>::with_capacity(table_columns.len());
-        for i in 0..table_columns.len() {
-          args.push(
-            match table_columns[i].column.r#type {
-              ColumnType::I8 => Value::new(frame, row[i].i8),
-              ColumnType::U8 => Value::new(frame, row[i].u8),
-              ColumnType::I16 => Value::new(frame, row[i].i16),
-              ColumnType::U16 => Value::new(frame, row[i].u16),
-              ColumnType::I32 => Value::new(frame, row[i].i32),
-              ColumnType::U32 => Value::new(frame, row[i].u32),
-              ColumnType::I64 | ColumnType::Timestamp => Value::new(frame, row[i].i64),
-              ColumnType::U64 => Value::new(frame, row[i].u64),
-              ColumnType::F32 | ColumnType::Currency => Value::new(frame, row[i].f32),
-              ColumnType::F64 => Value::new(frame, row[i].f64),
-              ColumnType::Symbol8 | ColumnType::Symbol16 | ColumnType::Symbol32 => {
-                Value::new(frame, row[i].get_symbol().clone())
-              }
-            }
-            .unwrap()
-          );
-        }
-        let accumulator = Module::main(global)
+        let mut args = partitions.iter()
+          .map(|partition| Value::new(frame, partition).unwrap())
+          .collect::<Vec<_>>();
+        let scan_result = Module::main(global)
           .function("scan")
           .expect("Function `scan` doesn't exist")
           .call(frame, &mut args)?
-          .expect("Function `scan` threw an exception");
-        if rows.peek().is_none() {
-          Module::main(global).set_global("scan_result", accumulator);
+          .expect("Function `scan` threw an exception")
+          .clone();
+        if i == partition_iter_len - 1 {
+          Module::main(global).set_global("scan_result", scan_result);
         }
         Ok(())
       }) {
         return Err(JuliaQueryError::JuliaHeapError(scan_error));
       }
     }
+    println!("{}ms to scan", now.elapsed().as_millis());
+    let now = Instant::now();
     let res: Vec<u8> = julia
       .dynamic_frame(|global, frame| {
         let io = Value::eval_string(frame, "IOBuffer()").unwrap().unwrap();
@@ -245,155 +222,168 @@ impl Table {
         Ok(bytes)
       })
       .unwrap();
+    println!("{}ms to serialize", now.elapsed().as_millis());
     Ok(res)
   }
+}
 
-  pub fn row_iter(&self, from_ts: i64, to_ts: i64, columns: Vec<&str>) -> RowIterator {
-    let mut partitions = self
-      .partition_meta
-      .iter()
-      .filter(|(_data_dir, partition_meta)| {
-        from_ts >= partition_meta.from_ts || to_ts > partition_meta.from_ts
-      })
-      .map(|(_data_dir, partition_meta)| partition_meta)
-      .collect::<Vec<&PartitionMeta>>();
-    partitions.sort_by_key(|partition_meta| partition_meta.from_ts);
+pub struct PartitionColumn<'a> {
+  pub table_column: TableColumn,
+  pub slice:        &'a mut [u8]
+}
 
-    RowIterator {
-      from_ts,
-      to_ts,
-      columns: self.get_union(&columns),
-      partitions,
-      partition_index: 0,
-      data_columns: vec![],
-      row_index: 0
+unsafe impl<'a> IntoJulia for &PartitionColumn<'a> {
+  unsafe fn into_julia(&self) -> *mut jl_value_t {
+    let jl_type: *mut jl_datatype_t = match self.table_column.r#type {
+      ColumnType::U8  | ColumnType::Symbol8 =>  jl_uint8_type,
+      ColumnType::U16 | ColumnType::Symbol16 => jl_uint16_type,
+      ColumnType::U32 | ColumnType::Symbol32 => jl_uint32_type,
+      ColumnType::U64 => jl_uint64_type,
+      ColumnType::I8 =>  jl_int8_type,
+      ColumnType::I16 => jl_int16_type,
+      ColumnType::I32 => jl_int32_type,
+      ColumnType::I64 => jl_int64_type,
+      ColumnType::F32 | ColumnType::Currency => jl_float32_type,
+      ColumnType::F64 => jl_float64_type,
+      ColumnType::Timestamp => match self.table_column.size {
+        8 => jl_uint64_type,
+        4 => jl_uint32_type,
+        2 => jl_uint16_type,
+        1 => jl_uint8_type,
+        _ => panic!("Invalid timestamp column size")
+      }
+    };
+    let array_type = jl_apply_array_type(jl_type.cast(), 1);
+    let ptr = self.slice.as_ptr();
+    let len = self.slice.len() / self.table_column.size;
+    jl_ptr_to_array_1d(array_type, (ptr as *mut u8).cast(), len, 0).cast()
+  }
+}
+
+macro_rules! get_partition_slice {
+  ($slice: expr, $_type: ty) => {
+    unsafe {
+      from_raw_parts_mut(
+        $slice.as_ptr() as *mut $_type,
+        $slice.len() / std::mem::size_of::<$_type>()
+      )
     }
   }
 }
 
-pub struct RowIterator<'a> {
-  from_ts: i64,
-  to_ts: i64,
-  columns: Vec<TableColumnMeta<'a>>,
-  partitions: Vec<&'a PartitionMeta>,
-  partition_index: usize,
-  data_columns: Vec<TableColumn>,
-  row_index: usize
+impl<'a> PartitionColumn<'_> {
+  pub fn get_currency(&self) -> &[f32] { self.get_f32() }
+
+  pub fn get_i8(&self) -> &mut [i8] { get_partition_slice!(self.slice, i8) }
+  pub fn get_u8(&self) -> &mut [u8] { get_partition_slice!(self.slice, u8) }
+  pub fn get_i16(&self) -> &mut [i16] { get_partition_slice!(self.slice, i16) }
+  pub fn get_u16(&self) -> &mut [u16] { get_partition_slice!(self.slice, u16) }
+  pub fn get_i32(&self) -> &mut [i32] { get_partition_slice!(self.slice, i32) }
+  pub fn get_u32(&self) -> &mut [u32] { get_partition_slice!(self.slice, u32) }
+  pub fn get_i64(&self) -> &mut [i64] { get_partition_slice!(self.slice, i64) }
+  pub fn get_u64(&self) -> &mut [u64] { get_partition_slice!(self.slice, u64) }
+  pub fn get_f32(&self) -> &mut [f32] { get_partition_slice!(self.slice, f32) }
+  pub fn get_f64(&self) -> &mut [f64] { get_partition_slice!(self.slice, f64) }
 }
 
-macro_rules! read_bytes {
-  ($_type:ty, $bytes:expr, $i:expr) => {{
-    let size = size_of::<$_type>();
-    <$_type>::from_le_bytes($bytes[$i * size..$i * size + size].try_into().unwrap())
+pub struct PartitionIterator<'a> {
+  from_ts: i64,
+  to_ts: i64,
+  ts_column: Column,
+  columns: Vec<TableColumnMeta<'a>>,
+  partitions: Vec<&'a PartitionMeta>,
+  partition_index: usize
+}
+
+macro_rules! binary_search_seek {
+  ($ts_column: expr, $len: expr, $needle: expr, $seek_start: expr, $_type: ty) => {{
+    let needle = $needle as $_type;
+    let data = from_raw_parts_mut($ts_column.data.as_ptr() as *mut $_type, $len);
+    let mut index = data.binary_search(&needle);
+    if let Ok(ref mut i) = index {
+      // Seek to beginning/end
+      if $seek_start {
+        while *i > 1 && data[*i - 1] == needle {
+          *i -= 1;
+        }
+      } else {
+        while *i < data.len() - 2 && data[*i + 1] == needle {
+          *i += 1;
+        }
+      }
+    }
+    index
   }};
 }
 
-impl<'a> Iterator for RowIterator<'a> {
-  type Item = Vec<RowValue<'a>>;
+unsafe fn find_ts(ts_column: &TableColumn, from_ts: i64, seek_start: bool) -> usize {
+  let needle = from_ts / ts_column.resolution;
+  let len = ts_column.data.len() / ts_column.size;
+  let search_results = match ts_column.size {
+    8 => binary_search_seek!(ts_column, len, needle, seek_start, i64),
+    4 => binary_search_seek!(ts_column, len, needle, seek_start, u32),
+    2 => binary_search_seek!(ts_column, len, needle, seek_start, u16),
+    1 => binary_search_seek!(ts_column, len, needle, seek_start, u8),
+    s => panic!(format!("Invalid column size {}", s))
+  };
+  match search_results {
+    Ok(n) => n,
+    Err(n) => n
+  }
+}
+
+impl<'a> Iterator for PartitionIterator<'a> {
+  type Item = Vec<PartitionColumn<'a>>;
 
   fn next(&mut self) -> Option<Self::Item> {
-    if self.row_index > self.partitions[self.partition_index].row_count {
-      self.partition_index += 1;
-      if self.partition_index > self.partitions.len() {
-        return None;
-      }
-      self.row_index = 0;
+    if self.partition_index > self.partitions.len() {
+      return None;
     }
     let partition_meta = self.partitions.get(self.partition_index)?;
-    if self.row_index == 0 {
-      self.data_columns = self
-        .columns
-        .iter()
-        .map(|column| {
-          Table::open_column(
-            &partition_meta.dir,
-            partition_meta.row_count,
-            &column.column
+    let start_row = if self.partition_index == 0 {
+      let ts_column = Table::open_column(
+        &partition_meta.dir,
+        partition_meta.row_count,
+        &self.ts_column
+      );
+      unsafe { find_ts(&ts_column, self.from_ts, true) }
+    } else {
+      0
+    };
+    let end_row = if self.partition_index == self.partitions.len() - 1 {
+      let ts_column = Table::open_column(
+        &partition_meta.dir,
+        partition_meta.row_count,
+        &self.ts_column
+      );
+      unsafe { find_ts(&ts_column, self.to_ts, false) }
+    } else {
+      partition_meta.row_count
+    };
+    let data_columns = self
+      .columns
+      .iter()
+      .map(|column| {
+        let table_column = Table::open_column(
+          &partition_meta.dir,
+          partition_meta.row_count,
+          &column.column
+        );
+        let slice = unsafe {
+          from_raw_parts_mut(
+            table_column.data.as_ptr().add(start_row * table_column.size) as *mut u8,
+            (end_row - start_row) * table_column.size
           )
-        })
-        .collect::<Vec<TableColumn>>();
-    }
-    let mut row = Vec::<RowValue>::with_capacity(self.data_columns.len());
-    for (col_index, table_column) in self.data_columns.iter().enumerate() {
-      let data = &table_column.data;
-      match table_column.r#type {
-        ColumnType::Timestamp => {
-          let nanoseconds = match table_column.size {
-            8 => read_bytes!(i64, data, self.row_index),
-            4 => read_bytes!(u32, data, self.row_index) as i64,
-            2 => read_bytes!(u16, data, self.row_index) as i64,
-            1 => read_bytes!(u8, data, self.row_index) as i64,
-            s => panic!(format!("Invalid column size {}", s))
-          } * table_column.resolution;
-          if col_index == 0 {
-            if nanoseconds > self.to_ts {
-              return None;
-            } else if nanoseconds < self.from_ts {
-              // TODO: binary search + rollback for first ts
-              break;
-            }
-          }
-          row.push(RowValue { i64: nanoseconds });
-        }
-        ColumnType::Currency | ColumnType::F32 => {
-          let f32 = read_bytes!(f32, data, self.row_index);
-          row.push(RowValue { f32 });
-        }
-        ColumnType::Symbol8 => {
-          let symbol_index = read_bytes!(u8, data, self.row_index) as usize;
-          let sym = &self.columns[col_index].symbols[symbol_index - 1];
-          row.push(RowValue { sym });
-        }
-        ColumnType::Symbol16 => {
-          let symbol_index = read_bytes!(u16, data, self.row_index) as usize;
-          let sym = &self.columns[col_index].symbols[symbol_index - 1];
-          row.push(RowValue { sym });
-        }
-        ColumnType::Symbol32 => {
-          let symbol_index = read_bytes!(u32, data, self.row_index) as usize;
-          let sym = &self.columns[col_index].symbols[symbol_index - 1];
-          row.push(RowValue { sym });
-        }
-        ColumnType::I8 => {
-          let i8 = read_bytes!(i8, data, self.row_index);
-          row.push(RowValue { i8 });
-        }
-        ColumnType::U8 => {
-          let u8 = read_bytes!(u8, data, self.row_index);
-          row.push(RowValue { u8 });
-        }
-        ColumnType::I16 => {
-          let i16 = read_bytes!(i16, data, self.row_index);
-          row.push(RowValue { i16 });
-        }
-        ColumnType::U16 => {
-          let u16 = read_bytes!(u16, data, self.row_index);
-          row.push(RowValue { u16 });
-        }
-        ColumnType::I32 => {
-          let i32 = read_bytes!(i32, data, self.row_index);
-          row.push(RowValue { i32 });
-        }
-        ColumnType::U32 => {
-          let u32 = read_bytes!(u32, data, self.row_index);
-          row.push(RowValue { u32 });
-        }
-        ColumnType::I64 => {
-          let i64 = read_bytes!(i64, data, self.row_index);
-          row.push(RowValue { i64 });
-        }
-        ColumnType::U64 => {
-          let u64 = read_bytes!(u64, data, self.row_index);
-          row.push(RowValue { u64 });
-        }
-        ColumnType::F64 => {
-          let f64 = read_bytes!(f64, data, self.row_index);
-          row.push(RowValue { f64 });
-        }
-      }
-    }
+        };
 
-    self.row_index += 1;
-    return Some(row);
+        PartitionColumn {
+          slice,
+          table_column
+        }
+      })
+      .collect::<Vec<_>>();
+
+    self.partition_index += 1;
+    return Some(data_columns);
   }
 }

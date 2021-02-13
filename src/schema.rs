@@ -56,8 +56,8 @@ impl Column {
     }
   }
 
-  pub fn with_resolution(mut self, resolution: i64) -> Column {
-    self.resolution = resolution;
+  pub fn with_resolution(mut self, resolution_nanos: i64) -> Column {
+    self.resolution = resolution_nanos;
     self
   }
 }
@@ -73,10 +73,10 @@ pub enum PartitionBy {
 #[derive(Serialize, Deserialize)]
 pub struct Schema {
   #[serde(skip, default)]
-  pub name:         String,
-  pub columns:      Vec<Column>,
-  pub partition_by: PartitionBy,
-  pub data_dirs:    Vec<PathBuf>
+  pub name:           String,
+  pub columns:        Vec<Column>,
+  pub partition_by:   PartitionBy,
+  pub partition_dirs: Vec<PathBuf>
 }
 
 impl fmt::Debug for Schema {
@@ -99,10 +99,10 @@ impl fmt::Debug for Schema {
 impl<'a> Schema {
   pub fn new(name: &'a str) -> Self {
     Self {
-      name:         name.to_owned(),
-      columns:      vec![],
-      partition_by: PartitionBy::None,
-      data_dirs:    vec![PathBuf::from("data")]
+      name:           name.to_owned(),
+      columns:        vec![],
+      partition_by:   PartitionBy::None,
+      partition_dirs: vec![PathBuf::from("data")]
     }
   }
 
@@ -124,10 +124,10 @@ impl<'a> Schema {
     self
   }
 
-  pub fn data_dirs(mut self, data_dirs: Vec<&str>) -> Self {
-    self.data_dirs = data_dirs
+  pub fn partition_dirs(mut self, partition_dirs: Vec<&str>) -> Self {
+    self.partition_dirs = partition_dirs
       .iter()
-      .map(|data_dir| PathBuf::from(data_dir))
+      .map(|partition_dir| PathBuf::from(partition_dir))
       .collect::<Vec<_>>();
     self
   }
