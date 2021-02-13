@@ -1,7 +1,6 @@
 use fastrand;
 use zdb::{schema::*, table::Table, test_symbols::SYMBOLS};
 use jlrs::prelude::*;
-use std::sync::Arc;
 
 struct OHLCV {
   ts:       i64,

@@ -209,9 +209,9 @@ dependencies = [
 
 [[package]]
 name = "jlrs"
-version = "0.8.0"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c353f1017611c36d092ca393f8efecdf1903dfd5cff88f5717968c34ef26c980"
+checksum = "e7ccffdba3d133dd7de5ba18096781b19acbf659b1ee3e239e930a3ab6652930"
 dependencies = [
  "jl-sys",
  "jlrs-derive",

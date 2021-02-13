@@ -7,13 +7,6 @@ use jlrs::{prelude::*, value::simple_vector::SimpleVector};
 use std::{
   cmp::max, env::temp_dir, fmt::Debug, fs, process, slice::from_raw_parts_mut, thread, time::Instant
 };
-use jlrs::traits::IntoJulia;
-use jlrs::jl_sys_export::{jl_ptr_to_array_1d, jl_apply_array_type, jl_value_t};
-use jlrs::jl_sys_export::{
-    jl_datatype_t, jl_float32_type, jl_float64_type, jl_int16_type,
-    jl_int32_type, jl_int64_type, jl_int8_type, jl_uint16_type, jl_uint32_type, jl_uint64_type,
-    jl_uint8_type
-};
 
 pub trait FormatCurrency {
   fn format_currency(self, sig_figs: usize) -> String;
@@ -56,6 +49,15 @@ pub enum JuliaQueryError {
   JuliaHeapError(Box<JlrsError>),
   ArgMismatch(String)
 }
+
+macro_rules! partition_to_value {
+  ($frame: expr, $partition: expr, $_type: ty) => {{
+    let len = $partition.slice.len() / $partition.table_column.size;
+    let slice = from_raw_parts_mut($partition.slice.as_mut_ptr().cast::<$_type>(), len);
+    Value::borrow_array($frame, slice, len).unwrap()
+  }}
+}
+
 
 impl Table {
   fn get_union<'a>(&'a self, columns: &Vec<&str>) -> Vec<TableColumnMeta<'a>> {
@@ -183,9 +185,30 @@ impl Table {
     println!("{}ms to eval", now.elapsed().as_millis());
     let now = Instant::now();
     for (i, partitions) in partition_iter.enumerate() {
+      let mut partitions = partitions;
       if let Err(scan_error) = julia.dynamic_frame(|global, frame| {
-        let mut args = partitions.iter()
-          .map(|partition| Value::new(frame, partition).unwrap())
+        let mut args = partitions.iter_mut()
+          .map(|partition| {
+            match partition.table_column.r#type {
+              ColumnType::U8  | ColumnType::Symbol8 =>  partition_to_value!(frame, partition, u8),
+              ColumnType::U16 | ColumnType::Symbol16 => partition_to_value!(frame, partition, u16),
+              ColumnType::U32 | ColumnType::Symbol32 => partition_to_value!(frame, partition, u32),
+              ColumnType::U64 => partition_to_value!(frame, partition, u64),
+              ColumnType::I8 =>  partition_to_value!(frame, partition, i8),
+              ColumnType::I16 => partition_to_value!(frame, partition, i16),
+              ColumnType::I32 => partition_to_value!(frame, partition, i32),
+              ColumnType::I64 => partition_to_value!(frame, partition, i64),
+              ColumnType::F32 | ColumnType::Currency => partition_to_value!(frame, partition, f32),
+              ColumnType::F64 => partition_to_value!(frame, partition, f64),
+              ColumnType::Timestamp => match partition.table_column.size {
+                8 => partition_to_value!(frame, partition, i64),
+                4 => partition_to_value!(frame, partition, i32),
+                2 => partition_to_value!(frame, partition, i16),
+                1 => partition_to_value!(frame, partition, i8),
+                _ => panic!("Invalid timestamp column size")
+              }
+            }
+          })
           .collect::<Vec<_>>();
         let scan_result = Module::main(global)
           .function("scan")
@@ -230,34 +253,6 @@ impl Table {
 pub struct PartitionColumn<'a> {
   pub table_column: TableColumn,
   pub slice:        &'a mut [u8]
-}
-
-unsafe impl<'a> IntoJulia for &PartitionColumn<'a> {
-  unsafe fn into_julia(&self) -> *mut jl_value_t {
-    let jl_type: *mut jl_datatype_t = match self.table_column.r#type {
-      ColumnType::U8  | ColumnType::Symbol8 =>  jl_uint8_type,
-      ColumnType::U16 | ColumnType::Symbol16 => jl_uint16_type,
-      ColumnType::U32 | ColumnType::Symbol32 => jl_uint32_type,
-      ColumnType::U64 => jl_uint64_type,
-      ColumnType::I8 =>  jl_int8_type,
-      ColumnType::I16 => jl_int16_type,
-      ColumnType::I32 => jl_int32_type,
-      ColumnType::I64 => jl_int64_type,
-      ColumnType::F32 | ColumnType::Currency => jl_float32_type,
-      ColumnType::F64 => jl_float64_type,
-      ColumnType::Timestamp => match self.table_column.size {
-        8 => jl_uint64_type,
-        4 => jl_uint32_type,
-        2 => jl_uint16_type,
-        1 => jl_uint8_type,
-        _ => panic!("Invalid timestamp column size")
-      }
-    };
-    let array_type = jl_apply_array_type(jl_type.cast(), 1);
-    let ptr = self.slice.as_ptr();
-    let len = self.slice.len() / self.table_column.size;
-    jl_ptr_to_array_1d(array_type, (ptr as *mut u8).cast(), len, 0).cast()
-  }
 }
 
 macro_rules! get_partition_slice {
