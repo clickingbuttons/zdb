@@ -37,6 +37,21 @@ impl Table {
     Ok(())
   }
 
+  pub fn get_first_ts(&self) -> Option<i64> {
+    let mut min_ts = if self.cur_partition_meta.row_count == 0 {
+      None
+    } else {
+      Some(self.cur_partition_meta.from_ts)
+    };
+    for partition_meta in self.partition_meta.values() {
+      if min_ts.is_none() || partition_meta.to_ts < min_ts.unwrap() {
+        min_ts = Some(partition_meta.from_ts);
+      }
+    }
+
+    min_ts
+  }
+
   pub fn get_last_ts(&self) -> Option<i64> {
     let mut max_ts = if self.cur_partition_meta.row_count == 0 {
       None

@@ -52,7 +52,7 @@ pub enum JuliaQueryError {
 
 macro_rules! partition_to_value {
   ($frame: expr, $partition: expr, $_type: ty) => {{
-    let len = $partition.slice.len() / $partition.table_column.size;
+    let len = $partition.slice.len() / $partition.column.size;
     let slice = from_raw_parts_mut($partition.slice.as_mut_ptr().cast::<$_type>(), len);
     Value::borrow_array($frame, slice, len).unwrap()
   }}
@@ -84,7 +84,12 @@ impl Table {
       .iter()
       .map(|(_partition_dir, partition_meta)| partition_meta)
       .filter(|partition_meta| {
-        from_ts >= partition_meta.from_ts || to_ts > partition_meta.from_ts
+        // Start
+        (from_ts >= partition_meta.from_ts && from_ts <= partition_meta.to_ts) || 
+        // Middle
+        (from_ts < partition_meta.from_ts && to_ts > partition_meta.to_ts) || 
+        // End
+        (to_ts >= partition_meta.from_ts && to_ts <= partition_meta.to_ts) 
       })
       .collect::<Vec<&PartitionMeta>>();
     partitions.sort_by_key(|partition_meta| partition_meta.from_ts);
@@ -188,7 +193,7 @@ impl Table {
       if let Err(scan_error) = julia.dynamic_frame(|global, frame| {
         let mut args = partitions.iter_mut()
           .map(|partition| {
-            match partition.table_column.r#type {
+            match partition.column.r#type {
               ColumnType::U8  | ColumnType::Symbol8 =>  partition_to_value!(frame, partition, u8),
               ColumnType::U16 | ColumnType::Symbol16 => partition_to_value!(frame, partition, u16),
               ColumnType::U32 | ColumnType::Symbol32 => partition_to_value!(frame, partition, u32),
@@ -199,7 +204,7 @@ impl Table {
               ColumnType::I64 => partition_to_value!(frame, partition, i64),
               ColumnType::F32 | ColumnType::Currency => partition_to_value!(frame, partition, f32),
               ColumnType::F64 => partition_to_value!(frame, partition, f64),
-              ColumnType::Timestamp => match partition.table_column.size {
+              ColumnType::Timestamp => match partition.column.size {
                 8 => partition_to_value!(frame, partition, i64),
                 4 => partition_to_value!(frame, partition, i32),
                 2 => partition_to_value!(frame, partition, i16),
@@ -249,9 +254,13 @@ impl Table {
   }
 }
 
+#[derive(Debug)]
 pub struct PartitionColumn<'a> {
-  pub table_column: TableColumn,
-  pub slice:        &'a mut [u8]
+  pub column:    TableColumn,
+  pub slice:     &'a mut [u8],
+  pub symbols:   &'a Vec<String>,
+  pub meta:      &'a PartitionMeta,
+  pub row_count: usize
 }
 
 macro_rules! get_partition_slice {
@@ -278,8 +287,31 @@ impl<'a> PartitionColumn<'_> {
   pub fn get_u64(&self) -> &mut [u64] { get_partition_slice!(self.slice, u64) }
   pub fn get_f32(&self) -> &mut [f32] { get_partition_slice!(self.slice, f32) }
   pub fn get_f64(&self) -> &mut [f64] { get_partition_slice!(self.slice, f64) }
+
+  pub fn get_symbol(&self, row_index: usize) -> &String {
+    match self.column.r#type {
+      ColumnType::Symbol8 => &self.symbols[self.get_u8()[row_index] as usize],
+      ColumnType::Symbol16 => &self.symbols[self.get_u16()[row_index] as usize],
+      ColumnType::Symbol32 => &self.symbols[self.get_u32()[row_index] as usize],
+      ctype => panic!("ColumnType {:?} is not a Symbol", ctype)
+    }
+  }
+
+  pub fn get_timestamp(&self, row_index: usize) -> i64 {
+    if self.column.r#type != ColumnType::Timestamp {
+      panic!("ColumnType {:?} is not a Timestamp", self.column.r#type);
+    }
+
+    match self.column.size {
+      8 => self.get_i64()[row_index],
+      4 => self.get_u32()[row_index] as i64 * self.column.resolution + self.meta.min_ts,
+      2 => self.get_u16()[row_index] as i64 * self.column.resolution + self.meta.min_ts,
+      csize => panic!("Size {:?} is not a supported Timestamp size", csize)
+    }
+  }
 }
 
+#[derive(Debug)]
 pub struct PartitionIterator<'a> {
   from_ts: i64,
   to_ts: i64,
@@ -340,7 +372,7 @@ impl<'a> Iterator for PartitionIterator<'a> {
         partition_meta.row_count,
         &self.ts_column
       );
-      unsafe { find_ts(&ts_column, self.from_ts, true) }
+      unsafe { find_ts(&ts_column, self.from_ts - partition_meta.min_ts, true) }
     } else {
       0
     };
@@ -350,7 +382,7 @@ impl<'a> Iterator for PartitionIterator<'a> {
         partition_meta.row_count,
         &self.ts_column
       );
-      unsafe { find_ts(&ts_column, self.to_ts, false) }
+      unsafe { find_ts(&ts_column, self.to_ts - partition_meta.min_ts, false) }
     } else {
       partition_meta.row_count
     };
@@ -372,7 +404,10 @@ impl<'a> Iterator for PartitionIterator<'a> {
 
         PartitionColumn {
           slice,
-          table_column
+          column: table_column,
+          symbols: column.symbols,
+          meta: partition_meta,
+          row_count: end_row - start_row
         }
       })
       .collect::<Vec<_>>();

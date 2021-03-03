@@ -132,9 +132,9 @@ impl Table {
       Some(i) => *i,
       None => {
         let symbols = &mut column_symbols.symbols;
-        symbols.push(val.clone());
-        symbol_nums.insert(val, symbols.len());
-        symbols.len()
+        symbol_nums.insert(val.clone(), symbols.len());
+        symbols.push(val);
+        symbols.len() - 1
       }
     };
     let column = &self.columns[self.column_index];
