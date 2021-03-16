@@ -73,7 +73,6 @@ fn write_ohlcv(table_name: &str, freq: usize, row_count: usize) {
       Column::new("close_un", ColumnType::Currency),
       Column::new("volume", ColumnType::U64),
     ])
-    .partition_dirs(vec!["test_data"])
     .partition_by(PartitionBy::Day);
   if let Ok(mut table) = Table::create(schema) {
     println!("Generating {} rows", row_count);
@@ -184,13 +183,14 @@ fn sum_ohlcv_julia() {
   })
 }
 
+static TICKS_NAME: &str = "ticks_agg1m";
+
 #[test]
 fn sum_ticks_rust() {
-  let table_name = "ticks";
   let row_count = ROW_COUNT * 10;
-  write_ohlcv(table_name, 1, row_count); 
+  write_ohlcv(TICKS_NAME, 1, row_count); 
 
-  let table = Table::open(&table_name).expect("Could not open table");
+  let table = Table::open(&TICKS_NAME).expect("Could not open table");
 
   let mut sum = 0.0;
   let mut total = 0;
@@ -209,11 +209,10 @@ fn sum_ticks_rust() {
 
 #[test]
 fn sum_ticks_julia() {
-  let table_name = "ticks";
   let row_count = ROW_COUNT * 10;
-  write_ohlcv(table_name, 1, row_count); 
+  write_ohlcv(TICKS_NAME, 1, row_count); 
 
-  let table = Table::open(&table_name).expect("Could not open table");
+  let table = Table::open(&TICKS_NAME).expect("Could not open table");
 
 	JULIA.with(|j| {
     let mut julia = j.borrow_mut();

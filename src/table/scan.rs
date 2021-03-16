@@ -121,9 +121,7 @@ impl Table {
       offset::Local::now()
     ));
     fs::write(&prog_file, julia_prog).expect("Unable to write user program file");
-    println!("2");
     julia.include(prog_file).unwrap();
-    println!("3");
     let err_string = julia
       .dynamic_frame(|global, frame| {
         let expected_args = SimpleVector::with_capacity(frame, columns.len())?;
@@ -182,7 +180,6 @@ impl Table {
     let now = Instant::now();
     let partition_iter = self.partition_iter(from_ts, to_ts, columns);
     let partition_iter_len = partition_iter.partitions.len();
-    println!("1");
     if let Some(prog_errors) = self.eval_julia_prog(&partition_iter.columns, julia, julia_prog)
     {
       return Err(prog_errors);
