@@ -2,10 +2,8 @@ use crate::{
   schema::{Column, ColumnType},
   table::{PartitionMeta, Table, TableColumn}
 };
-use chrono::offset;
-use jlrs::{prelude::*, value::simple_vector::SimpleVector};
 use std::{
-  cmp::max, env::temp_dir, fmt::Debug, fs, process, slice::from_raw_parts_mut, thread, time::Instant
+  cmp::max, fmt::Debug, slice::from_raw_parts_mut
 };
 
 pub trait FormatCurrency {
@@ -42,22 +40,6 @@ struct TableColumnMeta<'a> {
   column:  Column,
   symbols: &'a Vec<String>
 }
-
-#[derive(Debug)]
-pub enum JuliaQueryError {
-  JuliaError(JlrsError),
-  JuliaHeapError(Box<JlrsError>),
-  ArgMismatch(String)
-}
-
-macro_rules! partition_to_value {
-  ($frame: expr, $partition: expr, $_type: ty) => {{
-    let len = $partition.slice.len() / $partition.column.size;
-    let slice = from_raw_parts_mut($partition.slice.as_mut_ptr().cast::<$_type>(), len);
-    Value::borrow_array($frame, slice, len).unwrap()
-  }}
-}
-
 
 impl Table {
   fn get_union<'a>(&'a self, columns: &Vec<&str>) -> Vec<TableColumnMeta<'a>> {
@@ -103,151 +85,6 @@ impl Table {
       partitions,
       partition_index: 0
     }
-  }
-
-  fn eval_julia_prog(
-    &self,
-    columns: &Vec<TableColumnMeta>,
-    julia: &mut Julia,
-    julia_prog: &str
-  ) -> Option<JuliaQueryError> {
-    // TODO: sandbox julia
-    let mut prog_file = temp_dir();
-    prog_file.push(format!(
-      "zdb_query_{}_process_{}_thread_{:?}_time_{:?}.jl",
-      self.schema.name,
-      process::id(),
-      thread::current().id(),
-      offset::Local::now()
-    ));
-    fs::write(&prog_file, julia_prog).expect("Unable to write user program file");
-    julia.include(prog_file).unwrap();
-    let err_string = julia
-      .dynamic_frame(|global, frame| {
-        let expected_args = SimpleVector::with_capacity(frame, columns.len())?;
-        for (i, c) in columns.iter().enumerate() {
-          let column_type = match c.column.r#type {
-            ColumnType::I8 => "Array{Int8,1}",
-            ColumnType::I16 => "Array{Int16,1}",
-            ColumnType::I32 => "Array{Int32,1}",
-            ColumnType::I64=> "Array{Int64,1}",
-            ColumnType::U8 | ColumnType::Symbol8 => "Array{UInt8,1}",
-            ColumnType::U16 | ColumnType::Symbol16 => "Array{UInt16,1}",
-            ColumnType::U32 | ColumnType::Symbol32 => "Array{UInt32,1}",
-            ColumnType::U64 => "Array{UInt64,1}",
-            ColumnType::F32 | ColumnType::Currency => "Array{Float32,1}",
-            ColumnType::F64 => "Array{Float64,1}",
-            ColumnType::Timestamp => match c.column.size {
-              8 => "Array{UInt64}",
-              4 => "Array{UInt32}",
-              2 => "Array{UInt16}",
-              1 => "Array{UInt8}",
-              _ => panic!("Invalid timestamp column size")
-            }
-          };
-
-          unsafe {
-            expected_args
-              .set(i, Value::new(frame, column_type)?)
-              .unwrap();
-          }
-        }
-        let scan_fn = Module::main(global).function("scan")?;
-
-        Module::main(global)
-          .submodule("ScanValidate")?
-          .function("validate_args")?
-          .call2(frame, scan_fn, expected_args.as_value())?
-          .expect("ScanZDB goofed")
-          .cast::<String>()
-      })
-      .unwrap();
-    match err_string.is_empty() {
-      true => None,
-      false => Some(JuliaQueryError::ArgMismatch(err_string))
-    }
-  }
-
-  // Client can call deserialize(IOBuffer(UInt8[bytes]))
-  pub unsafe fn scan_julia(
-    &self,
-    from_ts: i64,
-    to_ts: i64,
-    columns: Vec<&str>,
-    julia: &mut Julia,
-    julia_prog: &str
-  ) -> Result<Vec<u8>, JuliaQueryError> {
-    let now = Instant::now();
-    let partition_iter = self.partition_iter(from_ts, to_ts, columns);
-    let partition_iter_len = partition_iter.partitions.len();
-    if let Some(prog_errors) = self.eval_julia_prog(&partition_iter.columns, julia, julia_prog)
-    {
-      return Err(prog_errors);
-    }
-    println!("{}ms to eval", now.elapsed().as_millis());
-    let now = Instant::now();
-    for (i, mut partitions) in partition_iter.enumerate() {
-      if let Err(scan_error) = julia.dynamic_frame(|global, frame| {
-        let mut args = partitions.iter_mut()
-          .map(|partition| {
-            match partition.column.r#type {
-              ColumnType::U8  | ColumnType::Symbol8 =>  partition_to_value!(frame, partition, u8),
-              ColumnType::U16 | ColumnType::Symbol16 => partition_to_value!(frame, partition, u16),
-              ColumnType::U32 | ColumnType::Symbol32 => partition_to_value!(frame, partition, u32),
-              ColumnType::U64 => partition_to_value!(frame, partition, u64),
-              ColumnType::I8 =>  partition_to_value!(frame, partition, i8),
-              ColumnType::I16 => partition_to_value!(frame, partition, i16),
-              ColumnType::I32 => partition_to_value!(frame, partition, i32),
-              ColumnType::I64 => partition_to_value!(frame, partition, i64),
-              ColumnType::F32 | ColumnType::Currency => partition_to_value!(frame, partition, f32),
-              ColumnType::F64 => partition_to_value!(frame, partition, f64),
-              ColumnType::Timestamp => match partition.column.size {
-                8 => partition_to_value!(frame, partition, i64),
-                4 => partition_to_value!(frame, partition, i32),
-                2 => partition_to_value!(frame, partition, i16),
-                1 => partition_to_value!(frame, partition, i8),
-                _ => panic!("Invalid timestamp column size")
-              }
-            }
-          })
-          .collect::<Vec<_>>();
-        let scan_result = Module::main(global)
-          .function("scan")
-          .expect("Function `scan` doesn't exist")
-          .call(frame, &mut args)?
-          .expect("Function `scan` threw an exception")
-          .clone();
-        if i == partition_iter_len - 1 {
-          Module::main(global).set_global("scan_result", scan_result);
-        }
-        Ok(())
-      }) {
-        return Err(JuliaQueryError::JuliaHeapError(scan_error));
-      }
-    }
-    println!("{}ms to scan", now.elapsed().as_millis());
-    let now = Instant::now();
-    let res: Vec<u8> = julia
-      .dynamic_frame(|global, frame| {
-        let io = Value::eval_string(frame, "IOBuffer()").unwrap().unwrap();
-        let res = Module::main(global).global("scan_result").unwrap();
-        Module::main(global)
-          .function("serialize")
-          .expect("Function `serialize` doesn't exist")
-          .call2(frame, io, res)?
-          .expect("Can't serialize scan's value");
-        let bytes = io
-          .get_field(frame, "data")
-          .unwrap()
-          .cast::<Array>()
-          .unwrap();
-        let bytes = bytes.inline_data(frame).unwrap();
-        let bytes: Vec<u8> = bytes.as_slice().to_vec();
-        Ok(bytes)
-      })
-      .unwrap();
-    println!("{}ms to serialize", now.elapsed().as_millis());
-    Ok(res)
   }
 }
 
