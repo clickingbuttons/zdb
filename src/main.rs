@@ -1,6 +1,4 @@
-extern crate libc;
 use std::ffi::CString;
-use std::os::raw::{c_char, c_int};
 use nix::unistd::{fork, ForkResult};
 use std::process::exit;
 use std::io::prelude::*;
@@ -9,16 +7,7 @@ use std::net::TcpStream;
 use nix::sys::wait::waitpid;
 use nix::unistd::Pid;
 use nix::sys::signal;
-
-#[allow(non_camel_case_types)]
-type jl_value_t = u8;
-#[link(name = "julia")]
-extern {
-  fn jl_init__threading();
-  fn jl_eval_string(str: *const c_char) -> *mut jl_value_t;
-  fn jl_unbox_float64(v: *mut jl_value_t) -> f64;
-  fn jl_atexit_hook(status: c_int);
-}
+use zdb::server::julia::*;
 
 extern "C" fn handle_sigint(_: i32) {
   unsafe { jl_atexit_hook(0) };
@@ -115,8 +104,14 @@ fn handle_connection(mut stream: TcpStream, process_num: i64) {
       let jl_string = CString::new(query).unwrap();
       unsafe {
         let res = jl_eval_string(jl_string.as_ptr());
-        let val = jl_unbox_float64(res).to_string();
-        write_contents(stream, 200, val.as_bytes(), None);
+        println!("exception {}", jl_exception_occurred().as_ref().is_some());
+        if jl_exception_occurred().as_ref().is_some() {
+          write_contents(stream, 400, "error".as_bytes(), None); 
+        }
+        else {
+          let val = jl_unbox_float64(res).to_string();
+          write_contents(stream, 200, val.as_bytes(), None);
+        }
       }
     }
     else {
