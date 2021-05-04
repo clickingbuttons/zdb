@@ -49,7 +49,7 @@ pub struct PartitionMeta {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Table {
-  schema: Schema,
+  pub schema: Schema,
   // This file's existance means the Table exists
   #[serde(skip)]
   meta_path: PathBuf,

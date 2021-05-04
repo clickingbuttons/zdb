@@ -2,9 +2,7 @@ use crate::{
   schema::{Column, ColumnType},
   table::{PartitionMeta, Table, TableColumn}
 };
-use std::{
-  cmp::max, fmt::Debug, slice::from_raw_parts_mut
-};
+use std::{cmp::max, fmt::Debug, slice::from_raw_parts_mut};
 
 pub trait FormatCurrency {
   fn format_currency(self, sig_figs: usize) -> String;
@@ -61,20 +59,22 @@ impl Table {
   }
 
   pub fn partition_iter(&self, from_ts: i64, to_ts: i64, columns: Vec<&str>) -> PartitionIterator {
+    assert!(to_ts > from_ts);
     let mut partitions = self
       .partition_meta
       .iter()
       .map(|(_partition_dir, partition_meta)| partition_meta)
       .filter(|partition_meta| {
         // Start
-        (from_ts >= partition_meta.from_ts && from_ts <= partition_meta.to_ts) || 
+        (from_ts >= partition_meta.from_ts && from_ts <= partition_meta.to_ts) ||
         // Middle
-        (from_ts < partition_meta.from_ts && to_ts > partition_meta.to_ts) || 
+        (from_ts < partition_meta.from_ts && to_ts > partition_meta.to_ts) ||
         // End
-        (to_ts >= partition_meta.from_ts && to_ts <= partition_meta.to_ts) 
+        (to_ts >= partition_meta.from_ts && to_ts <= partition_meta.to_ts)
       })
       .collect::<Vec<&PartitionMeta>>();
     partitions.sort_by_key(|partition_meta| partition_meta.from_ts);
+    // println!("partitions {:?}", partitions);
     let ts_column = self.schema.columns[0].clone();
 
     PartitionIterator {
@@ -105,21 +105,30 @@ macro_rules! get_partition_slice {
         $slice.len() / std::mem::size_of::<$_type>()
       )
     }
-  }
+  };
 }
 
 impl<'a> PartitionColumn<'_> {
   pub fn get_currency(&self) -> &[f32] { self.get_f32() }
 
   pub fn get_i8(&self) -> &mut [i8] { get_partition_slice!(self.slice, i8) }
+
   pub fn get_u8(&self) -> &mut [u8] { get_partition_slice!(self.slice, u8) }
+
   pub fn get_i16(&self) -> &mut [i16] { get_partition_slice!(self.slice, i16) }
+
   pub fn get_u16(&self) -> &mut [u16] { get_partition_slice!(self.slice, u16) }
+
   pub fn get_i32(&self) -> &mut [i32] { get_partition_slice!(self.slice, i32) }
+
   pub fn get_u32(&self) -> &mut [u32] { get_partition_slice!(self.slice, u32) }
+
   pub fn get_i64(&self) -> &mut [i64] { get_partition_slice!(self.slice, i64) }
+
   pub fn get_u64(&self) -> &mut [u64] { get_partition_slice!(self.slice, u64) }
+
   pub fn get_f32(&self) -> &mut [f32] { get_partition_slice!(self.slice, f32) }
+
   pub fn get_f64(&self) -> &mut [f64] { get_partition_slice!(self.slice, f64) }
 
   pub fn get_symbol(&self, row_index: usize) -> &String {
@@ -163,11 +172,11 @@ macro_rules! binary_search_seek {
     if let Ok(ref mut i) = index {
       // Seek to beginning/end
       if $seek_start {
-        while *i > 1 && data[*i - 1] == needle {
+        while *i > 0 && data[*i - 1] == needle {
           *i -= 1;
         }
       } else {
-        while *i < data.len() - 2 && data[*i + 1] == needle {
+        while *i < data.len() - 1 && data[*i + 1] == needle {
           *i += 1;
         }
       }
@@ -196,7 +205,7 @@ impl<'a> Iterator for PartitionIterator<'a> {
   type Item = Vec<PartitionColumn<'a>>;
 
   fn next(&mut self) -> Option<Self::Item> {
-    if self.partition_index > self.partitions.len() {
+    if self.partition_index == self.partitions.len() {
       return None;
     }
     let partition_meta = self.partitions.get(self.partition_index)?;
@@ -231,7 +240,10 @@ impl<'a> Iterator for PartitionIterator<'a> {
         );
         let slice = unsafe {
           from_raw_parts_mut(
-            table_column.data.as_ptr().add(start_row * table_column.size) as *mut u8,
+            table_column
+              .data
+              .as_ptr()
+              .add(start_row * table_column.size) as *mut u8,
             (end_row - start_row) * table_column.size
           )
         };

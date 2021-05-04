@@ -73,9 +73,9 @@ pub enum PartitionBy {
 #[derive(Serialize, Deserialize)]
 pub struct Schema {
   #[serde(skip, default)]
-  pub name:           String,
-  pub columns:        Vec<Column>,
-  pub partition_by:   PartitionBy,
+  pub name: String,
+  pub columns: Vec<Column>,
+  pub partition_by: PartitionBy,
   pub partition_dirs: Vec<PathBuf>
 }
 
@@ -99,9 +99,9 @@ impl fmt::Debug for Schema {
 impl<'a> Schema {
   pub fn new(name: &'a str) -> Self {
     Self {
-      name:           name.to_owned(),
-      columns:        vec![],
-      partition_by:   PartitionBy::None,
+      name: name.to_owned(),
+      columns: vec![],
+      partition_by: PartitionBy::None,
       partition_dirs: vec![PathBuf::from("data")]
     }
   }
