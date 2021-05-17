@@ -167,25 +167,27 @@ pub struct PartitionIterator<'a> {
 macro_rules! binary_search_seek {
   ($ts_column: expr, $len: expr, $needle: expr, $seek_start: expr, $_type: ty) => {{
     let needle = $needle as $_type;
-    let data = from_raw_parts_mut($ts_column.data.as_ptr() as *mut $_type, $len);
-    let mut index = data.binary_search(&needle);
-    if let Ok(ref mut i) = index {
-      // Seek to beginning/end
-      if $seek_start {
-        while *i > 0 && data[*i - 1] == needle {
-          *i -= 1;
-        }
-      } else {
-        while *i < data.len() - 1 && data[*i + 1] == needle {
-          *i += 1;
+    unsafe {
+      let data = from_raw_parts_mut($ts_column.data.as_ptr() as *mut $_type, $len);
+      let mut index = data.binary_search(&needle);
+      if let Ok(ref mut i) = index {
+        // Seek to beginning/end
+        if $seek_start {
+          while *i > 0 && data[*i - 1] == needle {
+            *i -= 1;
+          }
+        } else {
+          while *i < data.len() - 1 && data[*i + 1] == needle {
+            *i += 1;
+          }
         }
       }
+      index
     }
-    index
   }};
 }
 
-unsafe fn find_ts(ts_column: &TableColumn, from_ts: i64, seek_start: bool) -> usize {
+fn find_ts(ts_column: &TableColumn, from_ts: i64, seek_start: bool) -> usize {
   let needle = from_ts / ts_column.resolution;
   let len = ts_column.data.len() / ts_column.size;
   let search_results = match ts_column.size {
@@ -193,7 +195,7 @@ unsafe fn find_ts(ts_column: &TableColumn, from_ts: i64, seek_start: bool) -> us
     4 => binary_search_seek!(ts_column, len, needle, seek_start, u32),
     2 => binary_search_seek!(ts_column, len, needle, seek_start, u16),
     1 => binary_search_seek!(ts_column, len, needle, seek_start, u8),
-    s => panic!(format!("Invalid column size {}", s))
+    s => panic!("Invalid column size {}", s)
   };
   match search_results {
     Ok(n) => n,
@@ -215,7 +217,7 @@ impl<'a> Iterator for PartitionIterator<'a> {
         partition_meta.row_count,
         &self.ts_column
       );
-      unsafe { find_ts(&ts_column, self.from_ts - partition_meta.min_ts, true) }
+      find_ts(&ts_column, self.from_ts - partition_meta.min_ts, true)
     } else {
       0
     };
@@ -225,7 +227,7 @@ impl<'a> Iterator for PartitionIterator<'a> {
         partition_meta.row_count,
         &self.ts_column
       );
-      unsafe { find_ts(&ts_column, self.to_ts - partition_meta.min_ts, false) }
+      find_ts(&ts_column, self.to_ts - partition_meta.min_ts, false)
     } else {
       partition_meta.row_count
     };
@@ -262,3 +264,36 @@ impl<'a> Iterator for PartitionIterator<'a> {
     return Some(data_columns);
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use std::slice::from_raw_parts_mut;
+  struct TestColumn<'a> {
+    data: &'a [i64]
+  }
+  #[test]
+  fn test_binary_search_seek() {
+    let data = TestColumn {
+      data: &[1,2,2,2,2,2,3,4,5,5,5,5,5,5,6,7,8,10]
+    };
+    assert_eq!(binary_search_seek!(data, data.data.len(), 2, true, i64), Ok(1));
+    assert_eq!(binary_search_seek!(data, data.data.len(), 2, false, i64), Ok(5));
+    assert_eq!(binary_search_seek!(data, data.data.len(), 5, true, i64), Ok(8));
+    assert_eq!(binary_search_seek!(data, data.data.len(), 5, false, i64), Ok(13));
+    assert_eq!(binary_search_seek!(data, data.data.len(), 9, false, i64), Err(data.data.len() - 1));
+    assert_eq!(binary_search_seek!(data, data.data.len(), 21, false, i64), Err(data.data.len()));
+
+    let data = TestColumn {
+      data: &[1]
+    };
+    assert_eq!(binary_search_seek!(data, data.data.len(), 1, true, i64), Ok(0));
+    assert_eq!(binary_search_seek!(data, data.data.len(), 1, false, i64), Ok(0));
+
+    let data = TestColumn {
+      data: &[]
+    };
+    assert_eq!(binary_search_seek!(data, data.data.len(), 1, true, i64), Err(0));
+    assert_eq!(binary_search_seek!(data, data.data.len(), 1, false, i64), Err(0));
+  }
+}
+

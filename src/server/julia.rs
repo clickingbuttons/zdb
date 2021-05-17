@@ -149,6 +149,7 @@ pub struct jl_datatype_t {
 #[link(name = "julia")]
 extern "C" {
   pub fn jl_init__threading();
+  pub fn jl_is_initialized() -> c_int;
   pub fn jl_eval_string(str: *const c_char) -> *mut jl_value_t;
   pub fn jl_box_bool(x: i8) -> *mut jl_value_t;
   pub fn jl_box_char(x: c_char) -> *mut jl_value_t;
@@ -163,6 +164,8 @@ extern "C" {
   pub fn jl_box_float32(x: f32) -> *mut jl_value_t;
   pub fn jl_box_float64(x: f64) -> *mut jl_value_t;
   pub fn jl_unbox_voidpointer(v: *mut jl_value_t) -> *mut c_void;
+  pub fn jl_unbox_int64(v: *mut jl_value_t) -> i64;
+  pub fn jl_unbox_float64(v: *mut jl_value_t) -> f64;
   pub fn jl_exception_occurred() -> *mut jl_value_t;
   pub static mut jl_main_module: *mut jl_module_t;
   pub static mut jl_core_module: *mut jl_module_t;
@@ -199,6 +202,7 @@ extern "C" {
   pub fn jl_new_module(name: *mut jl_sym_t) -> *mut jl_module_t;
   pub fn jl_symbol(str: *const c_char) -> *mut jl_sym_t;
   pub fn jl_get_field(o: *mut jl_value_t, fld: *const c_char) -> *mut jl_value_t;
+  pub fn jl_get_nth_field(v: *mut jl_value_t, i: usize) -> *mut jl_value_t;
   pub fn jl_stderr_obj() -> *mut jl_value_t;
   pub fn jl_typeof_str(v: *mut jl_value_t) -> *const c_char;
   pub fn jl_ptr_to_array_1d(
@@ -251,4 +255,29 @@ macro_rules! llt_align {
 pub unsafe fn jl_symbol_name(s: *mut jl_sym_t) -> *mut u8 {
   s.cast::<u8>()
     .add(llt_align!(size_of::<jl_sym_t>(), size_of::<*mut c_void>()))
+}
+
+pub fn init_julia() {
+  unsafe {
+    if jl_is_initialized() == 0 {
+      jl_init__threading();
+      jl_eval_string(c_str!("using Serialization"));
+      let ans = jl_eval_string(c_str!("IOBuffer()"));
+      // Specialize serializing common types. This saves ~20x on serialization (50ms to 20µs)
+      let func = jl_get_function(jl_main_module, "serialize");
+      jl_call2(func, ans, jl_box_bool(0));
+      jl_call2(func, ans, jl_box_char(0));
+      jl_call2(func, ans, jl_eval_string(c_str!("\"0\"")));
+      jl_call2(func, ans, jl_box_int8(0));
+      jl_call2(func, ans, jl_box_int16(0));
+      jl_call2(func, ans, jl_box_int32(0));
+      jl_call2(func, ans, jl_box_int64(0));
+      jl_call2(func, ans, jl_box_uint8(0));
+      jl_call2(func, ans, jl_box_uint16(0));
+      jl_call2(func, ans, jl_box_uint32(0));
+      jl_call2(func, ans, jl_box_uint64(0));
+      jl_call2(func, ans, jl_box_float32(0.0));
+      jl_call2(func, ans, jl_box_float64(0.0));
+    }
+  }
 }

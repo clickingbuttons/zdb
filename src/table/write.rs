@@ -77,10 +77,10 @@ impl Table {
         self.cur_partition_meta = match self.partition_meta.get_mut(&self.cur_partition) {
           Some(meta) => {
             if val < meta.to_ts {
-              panic!(format!(
+              panic!(
                 "Timestamp {} is out of order (previous ts is {})",
                 val, meta.to_ts
-              ));
+              );
             }
             meta.clone()
           }
@@ -119,7 +119,7 @@ impl Table {
       4 => self.put_u32(((val - self.cur_partition_meta.min_ts) / resolution) as u32),
       2 => self.put_u16(((val - self.cur_partition_meta.min_ts) / resolution) as u16),
       1 => self.put_u8(((val - self.cur_partition_meta.min_ts) / resolution) as u8),
-      s => panic!(format!("Invalid column size {}", s))
+      s => panic!("Invalid column size {}", s)
     };
   }
 
@@ -142,7 +142,7 @@ impl Table {
       ColumnType::Symbol8 => self.put_u8(index as u8),
       ColumnType::Symbol16 => self.put_u16(index as u16),
       ColumnType::Symbol32 => self.put_u32(index as u32),
-      bad_type => panic!(format!("Unsupported column type {:?}", bad_type))
+      bad_type => panic!("Unsupported column type {:?}", bad_type)
     }
   }
 

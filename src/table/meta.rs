@@ -6,8 +6,7 @@ use std::{
 };
 
 pub fn read_meta(meta_path: &PathBuf) -> std::io::Result<Table> {
-  let f =
-    File::open(meta_path).unwrap_or_else(|_| panic!("Could not open meta file {:?}", meta_path));
+  let f = File::open(meta_path)?;
   let reader = BufReader::new(f);
 
   let res = serde_json::from_reader(reader)?;

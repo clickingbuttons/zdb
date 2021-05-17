@@ -1,6 +1,20 @@
 use fastrand;
-use zdb::{schema::*, table::Table, test_symbols::SYMBOLS};
-use jlrs::prelude::*;
+use zdb::{schema::*, table::Table, test_symbols::SYMBOLS, server::julia::{init_julia,jl_get_nth_field,jl_unbox_int64,jl_array_t}, server::query::{Query, run_query}};
+use std::slice::from_raw_parts;
+
+pub fn initialize_agg1m() -> Table {
+  match Table::open(&TABLE_NAME) {
+    Ok(t) => t,
+    Err(_e) => write_ohlcv(TABLE_NAME, 60, ROW_COUNT).expect("Could not open table")
+  }
+}
+
+pub fn initialize_trades() -> Table {
+  match Table::open(&TICKS_NAME) {
+    Ok(t) => t,
+    Err(_e) => write_ohlcv(TICKS_NAME, 1, ROW_COUNT * 10).expect("Could not open table")
+  }
+}
 
 struct OHLCV {
   ts:       i64,
@@ -59,7 +73,7 @@ fn write_rows(table: &mut Table, rows: Vec<OHLCV>) {
   table.flush();
 }
 
-fn write_ohlcv(table_name: &str, freq: usize, row_count: usize) {
+fn write_ohlcv(table_name: &str, freq: usize, row_count: usize) -> std::io::Result<Table> {
   fastrand::seed(0);
 
   let schema = Schema::new(table_name)
@@ -74,63 +88,44 @@ fn write_ohlcv(table_name: &str, freq: usize, row_count: usize) {
       Column::new("volume", ColumnType::U64),
     ])
     .partition_by(PartitionBy::Day);
-  if let Ok(mut table) = Table::create(schema) {
+  let mut table = Table::create(schema);
+  if let Ok(ref mut t) = table {
     println!("Generating {} rows", row_count);
-    let ts = match table.get_last_ts() {
+    let ts = match t.get_last_ts() {
       Some(ts) => ts,
       None => 0
     };
     let rows = generate_rows(ts, row_count, freq);
 
     println!("Writing rows");
-    write_rows(&mut table, rows);
+    write_rows(t, rows);
   }
+
+  table
 }
 
-fn get_f64_sum(slice: &[f32]) -> f64 {
-  slice.iter().map(|v| *v as f64).sum::<f64>()
-}
+fn get_f64_sum(slice: &[f32]) -> f64 { slice.iter().map(|v| *v as f64).sum::<f64>() }
 
 static TABLE_NAME: &str = "agg1m_test";
 static ROW_COUNT: usize = 24 * 60 * 60 + 100;
 static FROM_TS: i64 = 0;
 static TO_TS: i64 = 365 * 24 * 60 * 60 * 1_000_000_000;
 
-use std::cell::RefCell;
-thread_local! {
-  static JULIA: RefCell<Julia> = RefCell::new(unsafe {
-    println!("init");
-    let mut julia = Julia::init(32).unwrap();
-    julia
-      .include("ScanValidate.jl")
-      .expect("Could not load ScanValidate.jl");
-    julia
-      .dynamic_frame(|_global, frame| {
-        Value::eval_string(frame, "using Serialization")
-          .unwrap()
-          .unwrap();
-        Ok(())
-      })
-      .unwrap();
-    julia
-  });
-}
-
 #[test]
 fn sum_ohlcv_rust() {
-  write_ohlcv(TABLE_NAME, 60, ROW_COUNT); 
-
-  let table = Table::open(&TABLE_NAME).expect("Could not open table");
+  let table = initialize_agg1m();
 
   let mut sums = (0 as u64, 0.0, 0.0, 0.0, 0.0, 0 as u64);
   let mut total = 0;
-  let partitions = table.partition_iter(
-    FROM_TS,
-    TO_TS,
-    vec!["ts", "open", "high", "low", "close", "volume"]
-  );
+  let partitions = table.partition_iter(FROM_TS, TO_TS, vec![
+    "ts", "open", "high", "low", "close", "volume",
+  ]);
   for partition in partitions {
-    sums.0 += partition[0].get_u16().iter().map(|ts| *ts as u64).sum::<u64>();
+    sums.0 += partition[0]
+      .get_u16()
+      .iter()
+      .map(|ts| *ts as u64)
+      .sum::<u64>();
     sums.1 += get_f64_sum(partition[1].get_currency());
     sums.2 += get_f64_sum(partition[2].get_currency());
     sums.3 += get_f64_sum(partition[3].get_currency());
@@ -149,99 +144,109 @@ fn sum_ohlcv_rust() {
 
 #[test]
 fn sum_ohlcv_julia() {
-  write_ohlcv(TABLE_NAME, 60, ROW_COUNT); 
-  let table = Table::open(&TABLE_NAME).expect("Could not open table");
-	JULIA.with(|j| {
-    let mut julia = j.borrow_mut();
-    let bytes = unsafe {
-      table.scan_julia(
-        FROM_TS,
-        TO_TS,
-        vec!["open", "high", "low", "close", "volume"],
-        &mut julia,
-        "sums = [0.0, 0.0, 0.0, 0.0, UInt64(0)]
-        total = 0
-        function scan(
-          open::Array{Float32,1},
-          high::Array{Float32,1},
-          low::Array{Float32,1},
-          close::Array{Float32,1},
-          volume::Array{UInt64,1}
-        )
-          global total += size(close, 1)
-          global sums[1] += sum(map((x) -> convert(Float64, x), open))
-          global sums[2] += sum(map((x) -> convert(Float64, x), high))
-          global sums[3] += sum(map((x) -> convert(Float64, x), low))
-          global sums[4] += sum(map((x) -> convert(Float64, x), close))
-          global sums[5] += sum(volume)
-          (total, sums)
-        end"
-      ).unwrap()
-    };
-    // (86500, [43112.65845346451, 43207.75330758095, 43227.65141046047, 43257.26396346092, 4.3414679816093e13])
-    assert_eq!(bytes, [55, 74, 76, 10, 4, 0, 0, 0, 20, 2, 49, 228, 81, 1, 0, 21, 0, 14, 228, 0, 0, 13, 18, 21, 13, 229, 64, 0, 128, 24, 27, 248, 24, 229, 64, 0, 192, 90, 216, 116, 27, 229, 64, 0, 128, 99, 114, 40, 31, 229, 64, 128, 206, 195, 72, 34, 190, 195, 66]);
-  })
+  init_julia();
+  initialize_agg1m();
+  let query = "sums = [0.0, 0.0, 0.0, 0.0, 0.0]
+    total = 0
+    function scan(
+      open::Vector{Float32},
+      high::Vector{Float32},
+      low::Vector{Float32},
+      close::Vector{Float32},
+      volume::Vector{UInt64}
+    )
+      global total += size(close, 1)
+      global sums[1] += sum(map((x) -> convert(Float64, x), open))
+      global sums[2] += sum(map((x) -> convert(Float64, x), high))
+      global sums[3] += sum(map((x) -> convert(Float64, x), low))
+      global sums[4] += sum(map((x) -> convert(Float64, x), close))
+      global sums[5] += sum(volume)
+      (total, sums)
+    end";
+
+  let query = Query {
+    table: TABLE_NAME.to_string(),
+    from: FROM_TS,
+    to: TO_TS,
+    query: query.to_string()
+  };
+
+  let ans = run_query(&query);
+  assert!(ans.is_ok());
+  let ans = ans.unwrap();
+  unsafe {
+    let total = jl_unbox_int64(jl_get_nth_field(ans, 0));
+    assert_eq!(total, ROW_COUNT as i64);
+    let sums = *(jl_get_nth_field(ans, 1) as *const jl_array_t);
+    let sums = from_raw_parts(sums.data as *const f64, sums.length);
+    assert_eq!(sums[0], 43112.65845346451);
+    assert_eq!(sums[1], 43207.75330758095);
+    assert_eq!(sums[2], 43227.65141046047);
+    assert_eq!(sums[3], 43257.26396346092);
+    assert_eq!(sums[4], 43414679816093.0);
+  }
 }
 
 static TICKS_NAME: &str = "ticks_agg1m";
 
 #[test]
 fn sum_ticks_rust() {
-  let row_count = ROW_COUNT * 10;
-  write_ohlcv(TICKS_NAME, 1, row_count); 
-
-  let table = Table::open(&TICKS_NAME).expect("Could not open table");
+  let table = initialize_trades();
 
   let mut sum = 0.0;
   let mut total = 0;
-  let partitions = table.partition_iter(
-    FROM_TS,
-    TO_TS,
-    vec!["open"]
-  );
+  let partitions = table.partition_iter(FROM_TS, TO_TS, vec!["open"]);
   for partition in partitions {
     sum += get_f64_sum(partition[0].get_currency());
     total += partition[0].get_currency().iter().len();
   }
   assert_eq!(sum, 431907.90271890163);
-  assert_eq!(total, row_count);
+  assert_eq!(total, ROW_COUNT * 10);
 }
 
 #[test]
 fn sum_ticks_julia() {
+  init_julia();
+  initialize_trades();
   let row_count = ROW_COUNT * 10;
-  write_ohlcv(TICKS_NAME, 1, row_count); 
 
-  let table = Table::open(&TICKS_NAME).expect("Could not open table");
+  let query = "sums = [0.0, 0.0, 0.0, 0.0, 0.0]
+    total = 0
+    function scan(
+      open::Vector{Float32},
+      high::Vector{Float32},
+      low::Vector{Float32},
+      close::Vector{Float32},
+      volume::Vector{UInt64}
+    )
+      global total += size(close, 1)
+      global sums[1] += sum(map((x) -> convert(Float64, x), open))
+      global sums[2] += sum(map((x) -> convert(Float64, x), high))
+      global sums[3] += sum(map((x) -> convert(Float64, x), low))
+      global sums[4] += sum(map((x) -> convert(Float64, x), close))
+      global sums[5] += sum(volume)
+      (total, sums)
+    end";
+  let query = Query {
+    table: TICKS_NAME.to_string(),
+    from: FROM_TS,
+    to: TO_TS,
+    query: query.to_string()
+  };
 
-	JULIA.with(|j| {
-    let mut julia = j.borrow_mut();
-    let bytes = unsafe {
-      table.scan_julia(
-        FROM_TS,
-        TO_TS,
-        vec!["open", "high", "low", "close", "volume"],
-        &mut julia,
-        "sums = [0.0, 0.0, 0.0, 0.0, UInt64(0)]
-        total = 0
-        function scan(
-          open::Array{Float32,1},
-          high::Array{Float32,1},
-          low::Array{Float32,1},
-          close::Array{Float32,1},
-          volume::Array{UInt64,1}
-        )
-          global total += size(close, 1)
-          global sums[1] += sum(map((x) -> convert(Float64, x), open))
-          global sums[2] += sum(map((x) -> convert(Float64, x), high))
-          global sums[3] += sum(map((x) -> convert(Float64, x), low))
-          global sums[4] += sum(map((x) -> convert(Float64, x), close))
-          global sums[5] += sum(volume)
-          (total, sums)
-        end"
-      ).unwrap()
-    };
-    // (865000, [431907.90271890163, 432641.35292732716, 432500.71698760986, 432572.70821523666, 4.32761664812548e14])
-    assert_eq!(bytes, [55, 74, 76, 10, 4, 0, 0, 0, 20, 2, 49, 232, 50, 13, 0, 21, 0, 14, 228, 0, 88, 98, 156, 143, 92, 26, 65, 0, 200, 101, 105, 5, 104, 26, 65, 0, 0, 50, 222, 210, 101, 26, 65, 0, 96, 54, 213, 242, 102, 26, 65, 64, 96, 219, 212, 130, 153, 248, 66]);
-  });
+  let ans = run_query(&query);
+  assert!(ans.is_ok());
+  let ans = ans.unwrap();
+  unsafe {
+    let total = jl_unbox_int64(jl_get_nth_field(ans, 0));
+    assert_eq!(total, row_count as i64);
+    let sums = *(jl_get_nth_field(ans, 1) as *const jl_array_t);
+    let sums = from_raw_parts(sums.data as *const f64, sums.length);
+    assert_eq!(sums[0], 431907.90271890163);
+    assert_eq!(sums[1], 432641.35292732716);
+    assert_eq!(sums[2], 432500.71698760986);
+    assert_eq!(sums[3], 432572.70821523666);
+    assert_eq!(sums[4], 4.32761664812548e14);
+  }
 }
+
