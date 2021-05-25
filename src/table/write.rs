@@ -1,3 +1,4 @@
+use crate::table::get_col_dir;
 use crate::{
   calendar::ToNaiveDateTime,
   schema::{ColumnType, PartitionBy},
@@ -90,14 +91,14 @@ impl Table {
             } else {
               (self.dir_index + 1) % self.schema.partition_dirs.len()
             };
-            let mut partition_dir = self.schema.partition_dirs[self.dir_index].clone();
-            partition_dir.push(&self.schema.name);
-            partition_dir.push(&self.cur_partition);
+            let dir = self.schema.partition_dirs[self.dir_index].clone();
+            create_dir_all(get_col_dir(&self.schema.name, &dir, &self.cur_partition))
+              .unwrap_or_else(|_| panic!("Cannot create dir {:?}", &dir));
             let date = val.to_naive_date_time();
             let min_ts = self.get_partition_ts(date, 0);
             let max_ts = self.get_partition_ts(date, 1) - 1;
             PartitionMeta {
-              dir: partition_dir,
+              dir,
               from_ts: val,
               to_ts: val,
               min_ts,
@@ -106,9 +107,6 @@ impl Table {
             }
           }
         };
-        // Open new columns
-        create_dir_all(&self.cur_partition_meta.dir)
-          .unwrap_or_else(|_| panic!("Cannot create dir {:?}", &self.cur_partition_meta.dir));
         // Expect 10m more rows in partition
         self.columns = self.open_columns(&self.cur_partition_meta.dir, 10_000_000);
       }

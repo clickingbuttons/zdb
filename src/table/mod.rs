@@ -4,6 +4,7 @@ pub mod scan;
 mod write;
 use fnv::FnvHashMap;
 use serde::{Deserialize, Serialize};
+use std::env;
 
 use crate::schema::*;
 // "meta" crate is reserved
@@ -71,8 +72,13 @@ pub struct Table {
   pub cur_partition_meta: PartitionMeta
 }
 
+pub fn get_home_path() -> PathBuf {
+  PathBuf::from(env::var("ZDB_HOME").unwrap_or(String::from("")))
+}
+
 fn get_data_path(name: &str) -> PathBuf {
-  let mut path = PathBuf::from("data");
+  let mut path = get_home_path();
+  path.push("data");
   path.push(name);
   path
 }

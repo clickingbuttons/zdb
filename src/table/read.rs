@@ -1,6 +1,6 @@
 use crate::{
   schema::{Column, ColumnType, Schema},
-  table::{Table, TableColumn, TableColumnSymbols}
+  table::{Table, TableColumn, TableColumnSymbols, get_home_path}
 };
 use fnv::FnvHashMap;
 use memmap::MmapMut;
@@ -77,8 +77,20 @@ pub fn read_column_symbols(data_path: &PathBuf, schema: &Schema) -> Vec<TableCol
   res
 }
 
-fn get_col_path(data_path: &PathBuf, column: &Column) -> PathBuf {
-  let mut path = data_path.clone();
+pub fn get_col_dir(table_name: &str, partition_dir: &PathBuf, partition: &str) -> PathBuf {
+  let mut dir = if partition_dir.has_root() {
+    partition_dir.clone()
+  } else {
+    get_home_path()
+  };
+  dir.push(partition_dir);
+  dir.push(table_name);
+  dir.push(partition);
+  dir    
+}
+
+pub fn get_col_path(partition_dir: &PathBuf, table_name: &str, partition: &str, column: &Column) -> PathBuf {
+  let mut path = get_col_dir(&table_name, &partition_dir, &partition);
   path.push(&column.name);
   path.set_extension(String::from(format!("{:?}", column.r#type).to_lowercase()));
   path
@@ -106,9 +118,10 @@ fn get_column_data(path: &PathBuf, row_count: usize, column_size: usize) -> (Fil
 }
 
 impl Table {
-  pub fn open_column(partition_path: &PathBuf, row_count: usize, column: &Column) -> TableColumn {
-    let path = get_col_path(&partition_path, &column);
+  pub fn open_column(partition_dir: &PathBuf, table_name: &str, partition: &str, row_count: usize, column: &Column) -> TableColumn {
+    let path = get_col_path(&partition_dir, &table_name, &partition, &column);
     let (file, data) = get_column_data(&path, row_count, column.size);
+
     TableColumn {
       name: column.name.clone(),
       file,
@@ -120,7 +133,7 @@ impl Table {
     }
   }
 
-  pub fn open_columns(&self, partition_path: &PathBuf, extra_row_count: usize) -> Vec<TableColumn> {
+  pub fn open_columns(&self, partition_dir: &PathBuf, extra_row_count: usize) -> Vec<TableColumn> {
     let row_count = match self.partition_meta.get(&self.cur_partition) {
       Some(meta) => meta.row_count,
       None => 0
@@ -130,7 +143,7 @@ impl Table {
       .schema
       .columns
       .iter()
-      .map(|column| Table::open_column(partition_path, row_count, column))
+      .map(|column| Table::open_column(&partition_dir, &self.schema.name, &self.cur_partition, row_count, column))
       .collect::<Vec<_>>()
   }
 }

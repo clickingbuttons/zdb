@@ -63,8 +63,7 @@ impl Table {
     let mut partitions = self
       .partition_meta
       .iter()
-      .map(|(_partition_dir, partition_meta)| partition_meta)
-      .filter(|partition_meta| {
+      .filter(|(_partition_dir, partition_meta)| {
         // Start
         (from_ts >= partition_meta.from_ts && from_ts <= partition_meta.to_ts) ||
         // Middle
@@ -72,8 +71,8 @@ impl Table {
         // End
         (to_ts >= partition_meta.from_ts && to_ts <= partition_meta.to_ts)
       })
-      .collect::<Vec<&PartitionMeta>>();
-    partitions.sort_by_key(|partition_meta| partition_meta.from_ts);
+      .collect::<Vec<(&String, &PartitionMeta)>>();
+    partitions.sort_by_key(|(_partition_dir, partition_meta)| partition_meta.from_ts);
     // println!("partitions {:?}", partitions);
     let ts_column = self.schema.columns[0].clone();
 
@@ -83,7 +82,8 @@ impl Table {
       ts_column,
       columns: self.get_union(&columns),
       partitions,
-      partition_index: 0
+      partition_index: 0,
+      table_name: self.schema.name.clone()
     }
   }
 }
@@ -160,7 +160,8 @@ pub struct PartitionIterator<'a> {
   to_ts: i64,
   ts_column: Column,
   columns: Vec<TableColumnMeta<'a>>,
-  partitions: Vec<&'a PartitionMeta>,
+  table_name: String,
+  partitions: Vec<(&'a String, &'a PartitionMeta)>,
   partition_index: usize
 }
 
@@ -187,8 +188,8 @@ macro_rules! binary_search_seek {
   }};
 }
 
-fn find_ts(ts_column: &TableColumn, from_ts: i64, seek_start: bool) -> usize {
-  let needle = from_ts / ts_column.resolution;
+fn find_ts(ts_column: &TableColumn, ts: i64, seek_start: bool) -> usize {
+  let needle = ts / ts_column.resolution;
   let len = ts_column.data.len() / ts_column.size;
   let search_results = match ts_column.size {
     8 => binary_search_seek!(ts_column, len, needle, seek_start, i64),
@@ -210,10 +211,12 @@ impl<'a> Iterator for PartitionIterator<'a> {
     if self.partition_index == self.partitions.len() {
       return None;
     }
-    let partition_meta = self.partitions.get(self.partition_index)?;
+    let (partition_dir, partition_meta) = self.partitions.get(self.partition_index)?;
     let start_row = if self.partition_index == 0 {
       let ts_column = Table::open_column(
         &partition_meta.dir,
+        &self.table_name,
+        &partition_dir,
         partition_meta.row_count,
         &self.ts_column
       );
@@ -224,6 +227,8 @@ impl<'a> Iterator for PartitionIterator<'a> {
     let end_row = if self.partition_index == self.partitions.len() - 1 {
       let ts_column = Table::open_column(
         &partition_meta.dir,
+        &self.table_name,
+        &partition_dir,
         partition_meta.row_count,
         &self.ts_column
       );
@@ -237,6 +242,8 @@ impl<'a> Iterator for PartitionIterator<'a> {
       .map(|column| {
         let table_column = Table::open_column(
           &partition_meta.dir,
+          &self.table_name,
+          &partition_dir,
           partition_meta.row_count,
           &column.column
         );
