@@ -164,6 +164,7 @@ extern "C" {
   pub fn jl_box_float32(x: f32) -> *mut jl_value_t;
   pub fn jl_box_float64(x: f64) -> *mut jl_value_t;
   pub fn jl_unbox_voidpointer(v: *mut jl_value_t) -> *mut c_void;
+  pub fn jl_unbox_int32(v: *mut jl_value_t) -> i32;
   pub fn jl_unbox_int64(v: *mut jl_value_t) -> i64;
   pub fn jl_unbox_float64(v: *mut jl_value_t) -> f64;
   pub fn jl_exception_occurred() -> *mut jl_value_t;
@@ -184,6 +185,7 @@ extern "C" {
   pub static mut jl_uint16_type: *mut jl_datatype_t;
   pub static mut jl_uint32_type: *mut jl_datatype_t;
   pub static mut jl_uint64_type: *mut jl_datatype_t;
+  pub static mut jl_string_type: *mut jl_datatype_t;
   pub static mut jl_nothing: *mut jl_value_t;
   pub fn jl_isa(a: *mut jl_value_t, t: *mut jl_value_t) -> c_int;
   pub fn jl_call(f: *mut jl_function_t, args: *mut *mut jl_value_t, nargs: i32) -> *mut jl_value_t;
@@ -262,6 +264,7 @@ pub fn init_julia() {
     if jl_is_initialized() == 0 {
       jl_init__threading();
       jl_eval_string(c_str!("using Serialization"));
+      jl_eval_string(c_str!("using Dates"));
       let ans = jl_eval_string(c_str!("IOBuffer()"));
       // Specialize serializing common types. This saves ~20x on serialization (50ms to 20µs)
       let func = jl_get_function(jl_main_module, "serialize");

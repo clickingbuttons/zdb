@@ -10,8 +10,10 @@ use crate::{
   c_str,
   schema::{Column, ColumnType},
   server::julia::*,
-  table::Table
+  table::{scan::PartitionColumn,Table}
 };
+
+
 macro_rules! check_julia_error {
   ($stream:expr) => {
     // https://github.com/JuliaLang/julia/blob/f6b51abb294998571ff88a95b50a15ce062a2994/test/embedding/embedding.c
@@ -37,13 +39,7 @@ fn get_expected_type(column: &Column) -> *mut jl_datatype_t {
       ColumnType::U64 => jl_uint64_type,
       ColumnType::F32 | ColumnType::Currency => jl_float32_type,
       ColumnType::F64 => jl_float64_type,
-      ColumnType::Timestamp => match column.size {
-        8 => jl_uint64_type,
-        4 => jl_uint32_type,
-        2 => jl_uint16_type,
-        1 => jl_uint8_type,
-        _ => panic!("Invalid timestamp column size")
-      }
+      ColumnType::Timestamp => jl_int64_type,
     }
   }
 }
@@ -105,6 +101,31 @@ pub struct Query {
   pub to:    i64
 }
 
+unsafe fn get_julia_1d_array(partition: &PartitionColumn, arg_type: &*mut jl_datatype_t, tmp_columns: &mut Vec<Vec<i64>>) -> *mut jl_value_t {
+  if partition.column.r#type == ColumnType::Timestamp && partition.column.size != 8 {
+    let mut timestamps: Vec<i64> = Vec::with_capacity(partition.row_count);
+    let ptr = timestamps.as_ptr();
+    // TODO: SIMD
+    for i in 0..partition.row_count {
+      timestamps.push(partition.get_timestamp(i));
+    }
+    tmp_columns.push(timestamps);
+    // Let julia deal with freeing it
+    return jl_ptr_to_array_1d(
+      *arg_type as *mut jl_value_t,
+      ptr as *mut c_void,
+      partition.row_count,
+      0
+    ) as *mut jl_value_t;
+  }
+  return jl_ptr_to_array_1d(
+    *arg_type as *mut jl_value_t,
+    partition.get_u8().as_mut_ptr() as *mut c_void,
+    partition.row_count,
+    0
+  ) as *mut jl_value_t;
+}
+
 pub fn run_query(query: &Query) -> std::io::Result<*mut jl_value_t> {
   let table = Table::open(&query.table);
   if let Err(_e) = table {
@@ -122,10 +143,12 @@ pub fn run_query(query: &Query) -> std::io::Result<*mut jl_value_t> {
     if !jl_exception_occurred().is_null() || !jl_typeis(scan_fn, jl_function_type) {
       return Err(Error::new(ErrorKind::Other, "must define function \"scan\" in query"));
     }
+    let n_args = jl_eval_string(c_str!("typeof(Scan.scan).name.mt.defs.func.nargs"));
+    let n_args = (jl_unbox_int32(n_args) - 1) as usize;
     let arg_names = jl_eval_string(c_str!("typeof(Scan.scan).name.mt.defs.func.slot_syms"));
     let arg_names = from_raw_parts(jl_string_data(arg_names), jl_string_len(arg_names) - 1);
     let arg_names = String::from_utf8(arg_names.to_vec()).unwrap();
-    let arg_names = arg_names.split('\0').skip(1).filter(|n| !n.starts_with('#')).collect::<Vec<&str>>();
+    let arg_names = arg_names.split('\0').skip(1).filter(|n| !n.starts_with('#')).take(n_args).collect::<Vec<&str>>();
     let arg_types =
       jl_eval_string(c_str!("typeof(Scan.scan).name.mt.defs.sig.types")) as *mut jl_svec_t;
     let arg_types = from_raw_parts(
@@ -168,19 +191,15 @@ pub fn run_query(query: &Query) -> std::io::Result<*mut jl_value_t> {
     let now = Instant::now();
     for partition in partitions {
       let mut args: Vec<*mut jl_value_t> = Vec::new();
+      let mut tmp_columns: Vec<Vec<i64>> = Vec::new();
       for (partition, arg_type) in partition.iter().zip(arg_types.iter()) {
-        args.push(jl_ptr_to_array_1d(
-          *arg_type as *mut jl_value_t,
-          partition.get_u8().as_mut_ptr() as *mut c_void,
-          partition.row_count,
-          0
-        ) as *mut jl_value_t);
+        args.push(get_julia_1d_array(partition, arg_type, &mut tmp_columns));
       }
       res = jl_call(scan_fn, args.as_mut_ptr(), args.len() as i32);
       check_julia_error!(stream);
     }
     println!("scan {:?}", now.elapsed());
-    jl_call1(jl_eval_string(c_str!("println")), res);
+    // jl_call1(jl_eval_string(c_str!("println")), res);
 
     Ok(res)
   }

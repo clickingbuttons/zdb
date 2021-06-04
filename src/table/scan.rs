@@ -59,7 +59,7 @@ impl Table {
   }
 
   pub fn partition_iter(&self, from_ts: i64, to_ts: i64, columns: Vec<&str>) -> PartitionIterator {
-    assert!(to_ts > from_ts);
+    assert!(to_ts >= from_ts);
     let mut partitions = self
       .partition_meta
       .iter()
@@ -131,12 +131,20 @@ impl<'a> PartitionColumn<'_> {
 
   pub fn get_f64(&self) -> &mut [f64] { get_partition_slice!(self.slice, f64) }
 
-  pub fn get_symbol(&self, row_index: usize) -> &String {
+  pub fn get_symbol(&self, row_index: usize) -> &str {
     match self.column.r#type {
       ColumnType::Symbol8 => &self.symbols[self.get_u8()[row_index] as usize],
       ColumnType::Symbol16 => &self.symbols[self.get_u16()[row_index] as usize],
       ColumnType::Symbol32 => &self.symbols[self.get_u32()[row_index] as usize],
       ctype => panic!("ColumnType {:?} is not a Symbol", ctype)
+    }
+  }
+
+  pub fn to_timestamp(&self, v: i64) -> i64 {
+    match self.column.size {
+      8 => v,
+      4 | 2 => v * self.column.resolution + self.meta.min_ts,
+      csize => panic!("Size {:?} is not a supported Timestamp size", csize)
     }
   }
 
@@ -147,8 +155,8 @@ impl<'a> PartitionColumn<'_> {
 
     match self.column.size {
       8 => self.get_i64()[row_index],
-      4 => self.get_u32()[row_index] as i64 * self.column.resolution + self.meta.min_ts,
-      2 => self.get_u16()[row_index] as i64 * self.column.resolution + self.meta.min_ts,
+      4 => self.to_timestamp(self.get_u32()[row_index] as i64),
+      2 => self.to_timestamp(self.get_u16()[row_index] as i64),
       csize => panic!("Size {:?} is not a supported Timestamp size", csize)
     }
   }
@@ -181,6 +189,8 @@ macro_rules! binary_search_seek {
           while *i < data.len() - 1 && data[*i + 1] == needle {
             *i += 1;
           }
+          // This is going to be used as an end index
+          *i += 1;
         }
       }
       index
@@ -232,10 +242,12 @@ impl<'a> Iterator for PartitionIterator<'a> {
         partition_meta.row_count,
         &self.ts_column
       );
+      // Add one to be inclusive of the end row
       find_ts(&ts_column, self.to_ts - partition_meta.min_ts, false)
     } else {
       partition_meta.row_count
     };
+    // println!("{} {} {}", partition_dir, start_row, end_row);
     let data_columns = self
       .columns
       .iter()
@@ -284,17 +296,18 @@ mod tests {
       data: &[1,2,2,2,2,2,3,4,5,5,5,5,5,5,6,7,8,10]
     };
     assert_eq!(binary_search_seek!(data, data.data.len(), 2, true, i64), Ok(1));
-    assert_eq!(binary_search_seek!(data, data.data.len(), 2, false, i64), Ok(5));
+    assert_eq!(binary_search_seek!(data, data.data.len(), 2, false, i64), Ok(5 + 1));
     assert_eq!(binary_search_seek!(data, data.data.len(), 5, true, i64), Ok(8));
-    assert_eq!(binary_search_seek!(data, data.data.len(), 5, false, i64), Ok(13));
+    assert_eq!(binary_search_seek!(data, data.data.len(), 5, false, i64), Ok(13 + 1));
     assert_eq!(binary_search_seek!(data, data.data.len(), 9, false, i64), Err(data.data.len() - 1));
+    assert_eq!(binary_search_seek!(data, data.data.len(), 10, false, i64), Ok(data.data.len()));
     assert_eq!(binary_search_seek!(data, data.data.len(), 21, false, i64), Err(data.data.len()));
 
     let data = TestColumn {
       data: &[1]
     };
     assert_eq!(binary_search_seek!(data, data.data.len(), 1, true, i64), Ok(0));
-    assert_eq!(binary_search_seek!(data, data.data.len(), 1, false, i64), Ok(0));
+    assert_eq!(binary_search_seek!(data, data.data.len(), 1, false, i64), Ok(1));
 
     let data = TestColumn {
       data: &[]

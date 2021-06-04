@@ -6,53 +6,99 @@ use crate::server::query::{
   Query,
   run_query
 };
+use crate::table::Table;
 use std::{
   io::prelude::*,
   net::TcpStream
 };
 
-pub fn handle_connection(mut stream: TcpStream, process_num: i64) {
-  let mut buffer = [0; 4096];
-  let len = stream.read(&mut buffer).unwrap();
-  let req = String::from_utf8_lossy(&buffer[..len]);
-  let end = req.find('\n').unwrap();
-  let url = &req[..end];
-  let mut parts = url.split(' ');
-  let method = parts.next().unwrap();
-  let resource = parts.next().unwrap();
-  let mut parts = resource.split('?');
-  let resource = parts.next().unwrap();
+// Since we have to embed Julia we use a process per-connection
+static mut BUFFER: [u8; 1024] = [0; 1024];
+static mut BODY_BUFFER: [u8; 1024] = [0; 1024];
 
+pub fn handle_connection(mut stream: TcpStream, process_num: i64) {
+  let len = unsafe { stream.read(&mut BUFFER).unwrap() };
+  let mut headers = [httparse::EMPTY_HEADER; 16];
+  let mut req = httparse::Request::new(&mut headers);
+  let headers_len = unsafe { req.parse(&BUFFER).unwrap().unwrap() };
+  let method = match req.method {
+    Some(m) => m,
+    None => return write_contents(stream, 400, "No method specified".as_bytes(), None)
+  };
+  let path = match req.path {
+    Some(p) => p,
+    None => return write_contents(stream, 400, "No resource specified".as_bytes(), None)
+  };
+  let body = match method {
+    "POST" => {
+      unsafe {
+        if len > headers_len {
+          // Body already written
+          Some(&BUFFER[headers_len..len])
+        } else {
+          // Body coming next
+          let len = stream.read(&mut BODY_BUFFER).unwrap();
+          Some(&BODY_BUFFER[..len])
+        }
+      }
+    },
+    _ => None
+  };
+
+  println!("{}: {} {}", process_num, method, path);
   if method == "GET" {
-    println!("{}: {} {}", process_num, method, resource);
-    if resource == "/favicon.ico" {
+    if path == "/favicon.ico" {
       let headers = vec![
         ("cache-control", "public, max-age=191200"),
         ("content-type", "image/x-icon"),
       ];
       write_contents(stream, 200, include_bytes!("./static/zdb.ico"), Some(headers));
-    } else if resource == "/" {
+    } else if path == "/" {
       write_contents(stream, 200, include_bytes!("./static/hello.html"), None);
-    } else if resource == "/symbols" {
-      let query = parts.next();
-      println!("symbol {:?}", query);
+    } else if path.starts_with("/symbols") {
+      let mut parts = path.split('/');
+      parts.next();
+      parts.next();
+      let table_name = parts.next();
+      let column = parts.next();
+      if table_name.is_none() || column.is_none() {
+        return write_contents(stream, 400, "url must be in format /symbols/{table}/{column}".as_bytes(), None);
+      }
+      let table = Table::open(&table_name.unwrap());
+      if let Err(_e) = table {
+        let err = format!("table \"{}\" does not exist", table_name.unwrap());
+        return write_contents(stream, 400, err.as_bytes(), None);
+      }
+      let table = table.unwrap();
+      match table.schema.columns.iter().position(|c| c.name == column.unwrap()) {
+        Some(index) => {
+          let serialized = serde_json::to_string(&table.column_symbols[index].symbols).unwrap();
+          write_contents(stream, 200, serialized.as_bytes(), None);
+        },
+        None => {
+          let err = format!("Column {} does not exist on table {}", column.unwrap(), table.schema.name);
+          write_contents(stream, 400, err.as_bytes(), None);
+        }
+      }
     } else {
       write_contents(stream, 404, "Not found".as_bytes(), None);
     }
-  } else if method == "POST" && resource == "/q" {
-    let body_start = req.find("\n\r\n").unwrap() + 3;
-    let body = &req[body_start..];
-    let query = serde_json::from_str::<Query>(body);
+  } else if method == "POST" && path == "/q" {
+    let body = match body {
+      Some(b) => b,
+      None => return write_contents(stream, 400, "Never receieved body".as_bytes(), None)
+    };
+    let query = serde_json::from_slice::<Query>(body);
     match query {
       Err(err) => {
-        let err = format!("error parsing request: {}", err.to_string());
+        let err = format!("error parsing body: {}", err.to_string());
         return write_contents(stream, 400, err.as_bytes(), None);
       }
       Ok(query) => match run_query(&query) {
         Ok(value) => {
           let serialized = serialize_jl_value(value);
-          let res = format!("{:#04x?}", serialized);
-          write_contents(stream, 200, res.as_bytes(), None);
+          //let res = format!("{:#04x?}", serialized);
+          write_contents(stream, 200, serialized, None);
         },
         Err(err) => write_contents(stream, 400, err.to_string().as_bytes(), None)
       }

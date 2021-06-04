@@ -29,6 +29,7 @@ fn main() {
     match unsafe { fork() } {
       Ok(ForkResult::Child) => {
         println!("fork {}", i);
+        init_julia();
         let sig_action = signal::SigAction::new(
           signal::SigHandler::Handler(handle_sigint),
           signal::SaFlags::SA_NODEFER,
@@ -37,7 +38,6 @@ fn main() {
         unsafe {
           signal::sigaction(signal::SIGINT, &sig_action).unwrap();
         }
-        init_julia();
         for stream in listener.incoming() {
           let stream = stream.unwrap();
           handle_connection(stream, i);
