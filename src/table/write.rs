@@ -1,8 +1,7 @@
-use crate::table::get_col_dir;
 use crate::{
   calendar::ToNaiveDateTime,
   schema::{ColumnType, PartitionBy},
-  table::Table
+  table::{get_col_dir, Table}
 };
 use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime, MAX_DATETIME, MIN_DATETIME};
 use memmap;

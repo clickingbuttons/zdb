@@ -1,6 +1,14 @@
 use fastrand;
-use zdb::{schema::*, table::Table, test_symbols::SYMBOLS, server::julia::{init_julia,jl_get_nth_field,jl_unbox_int64,jl_array_t}, server::query::{Query, run_query}};
 use std::slice::from_raw_parts;
+use zdb::{
+  schema::*,
+  server::{
+    julia::{init_julia, jl_array_t, jl_get_nth_field, jl_unbox_int64},
+    query::{run_query, Query}
+  },
+  table::Table,
+  test_symbols::SYMBOLS
+};
 
 pub fn initialize_agg1m() -> Table {
   match Table::open(&TABLE_NAME) {
@@ -166,8 +174,8 @@ fn sum_ohlcv_julia() {
 
   let query = Query {
     table: TABLE_NAME.to_string(),
-    from: FROM_TS,
-    to: TO_TS,
+    from:  FROM_TS,
+    to:    TO_TS,
     query: query.to_string()
   };
 
@@ -229,8 +237,8 @@ fn sum_ticks_julia() {
     end";
   let query = Query {
     table: TICKS_NAME.to_string(),
-    from: FROM_TS,
-    to: TO_TS,
+    from:  FROM_TS,
+    to:    TO_TS,
     query: query.to_string()
   };
 
@@ -249,4 +257,3 @@ fn sum_ticks_julia() {
     assert_eq!(sums[4], 4.32761664812548e14);
   }
 }
-

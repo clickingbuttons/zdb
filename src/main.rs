@@ -2,15 +2,10 @@ use nix::{
   sys::{signal, wait::waitpid},
   unistd::{fork, ForkResult, Pid}
 };
-use std::{
-  net::TcpListener,
-  process::exit,
-  env::var
-};
-use zdb::server::handle_connection;
-use zdb::server::julia::{
-  init_julia,
-  jl_atexit_hook
+use std::{env::var, net::TcpListener, process::exit};
+use zdb::server::{
+  handle_connection,
+  julia::{init_julia, jl_atexit_hook}
 };
 
 extern "C" fn handle_sigint(_: i32) {
@@ -23,7 +18,8 @@ fn main() {
 
   let num_threads = var("ZDB_NUM_THREADS")
     .unwrap_or("12".to_string())
-    .parse::<i64>().unwrap();
+    .parse::<i64>()
+    .unwrap();
 
   for i in 0..num_threads {
     match unsafe { fork() } {
@@ -51,4 +47,3 @@ fn main() {
   drop(listener);
   waitpid(Some(Pid::from_raw(-1)), None).unwrap();
 }
-

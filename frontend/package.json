@@ -1,0 +1,22 @@
+{
+  "name": "zdb",
+  "version": "1.0.0",
+  "description": "Database charts",
+  "main": "index.js",
+  "scripts": {
+    "build": "NODE_ENV=production node scripts/build",
+    "clean": "node scripts/clean",
+    "serve": "node scripts/serve",
+    "start": "node scripts/start"
+  },
+  "author": "clickingbuttons",
+  "license": "MIT",
+  "devDependencies": {
+    "chokidar": "^3.5.1",
+    "esbuild": "^0.12.5"
+  },
+  "dependencies": {
+    "preact": "^10.5.13",
+    "uplot": "^1.6.11"
+  }
+}

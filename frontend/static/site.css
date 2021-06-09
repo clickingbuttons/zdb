@@ -1,0 +1,5 @@
+.chart-grid {
+  display: flex;
+  flex-flow: wrap;
+}
+

@@ -1,3 +1,9 @@
+use crate::{
+  c_str,
+  schema::{Column, ColumnType},
+  server::julia::*,
+  table::{scan::PartitionColumn, Table}
+};
 use chrono::{DateTime, NaiveDate};
 use serde::{de, Deserialize};
 use std::{
@@ -6,13 +12,6 @@ use std::{
   slice::from_raw_parts,
   time::Instant
 };
-use crate::{
-  c_str,
-  schema::{Column, ColumnType},
-  server::julia::*,
-  table::{scan::PartitionColumn,Table}
-};
-
 
 macro_rules! check_julia_error {
   ($stream:expr) => {
@@ -39,7 +38,31 @@ fn get_expected_type(column: &Column) -> *mut jl_datatype_t {
       ColumnType::U64 => jl_uint64_type,
       ColumnType::F32 | ColumnType::Currency => jl_float32_type,
       ColumnType::F64 => jl_float64_type,
-      ColumnType::Timestamp => jl_int64_type,
+      ColumnType::Timestamp => jl_int64_type
+    }
+  }
+}
+
+static NICE_FORMAT: &str = "%Y-%m-%d";
+pub fn string_to_nanoseconds(value: &str) -> std::io::Result<i64> {
+  // Nanoseconds since epoch?
+  if value.len() > 4 {
+    let nanoseconds = value.parse::<i64>();
+    if let Ok(nanoseconds) = nanoseconds {
+      return Ok(nanoseconds);
+    }
+  }
+  match DateTime::parse_from_rfc3339(&value) {
+    Ok(date) => Ok(date.timestamp_nanos()),
+    Err(_e) => match NaiveDate::parse_from_str(&value, &NICE_FORMAT) {
+      Ok(date) => Ok(date.and_hms(0, 0, 0).timestamp_nanos()),
+      Err(_e) => {
+        let msg = format!(
+          "Could not parse {} in RFC3339 or {} format",
+          &value, &NICE_FORMAT
+        );
+        Err(Error::new(ErrorKind::Other, msg))
+      }
     }
   }
 }
@@ -61,16 +84,9 @@ where
     where
       E: de::Error
     {
-      let convenience_format = "%Y-%m-%d";
-      match DateTime::parse_from_rfc3339(&value) {
-        Ok(date) => Ok(date.timestamp_nanos()),
-        Err(_e) => match NaiveDate::parse_from_str(&value, &convenience_format) {
-          Ok(date) => Ok(date.and_hms(0, 0, 0).timestamp_nanos()),
-          Err(_e) => {
-            let msg = format!("Could not parse {} in RFC3339 or {} format", &value, &convenience_format);
-            Err(E::custom(msg))
-          }
-        }
+      match string_to_nanoseconds(value) {
+        Ok(nanos) => Ok(nanos),
+        Err(e) => Err(E::custom(e))
       }
     }
 
@@ -101,7 +117,11 @@ pub struct Query {
   pub to:    i64
 }
 
-unsafe fn get_julia_1d_array(partition: &PartitionColumn, arg_type: &*mut jl_datatype_t, tmp_columns: &mut Vec<Vec<i64>>) -> *mut jl_value_t {
+unsafe fn get_julia_1d_array(
+  partition: &PartitionColumn,
+  arg_type: &*mut jl_datatype_t,
+  tmp_columns: &mut Vec<Vec<i64>>
+) -> *mut jl_value_t {
   if partition.column.r#type == ColumnType::Timestamp && partition.column.size != 8 {
     let mut timestamps: Vec<i64> = Vec::with_capacity(partition.row_count);
     let ptr = timestamps.as_ptr();
@@ -141,14 +161,22 @@ pub fn run_query(query: &Query) -> std::io::Result<*mut jl_value_t> {
     check_julia_error!(stream);
     let scan_fn = jl_eval_string(c_str!("Scan.scan"));
     if !jl_exception_occurred().is_null() || !jl_typeis(scan_fn, jl_function_type) {
-      return Err(Error::new(ErrorKind::Other, "must define function \"scan\" in query"));
+      return Err(Error::new(
+        ErrorKind::Other,
+        "must define function \"scan\" in query"
+      ));
     }
     let n_args = jl_eval_string(c_str!("typeof(Scan.scan).name.mt.defs.func.nargs"));
     let n_args = (jl_unbox_int32(n_args) - 1) as usize;
     let arg_names = jl_eval_string(c_str!("typeof(Scan.scan).name.mt.defs.func.slot_syms"));
     let arg_names = from_raw_parts(jl_string_data(arg_names), jl_string_len(arg_names) - 1);
     let arg_names = String::from_utf8(arg_names.to_vec()).unwrap();
-    let arg_names = arg_names.split('\0').skip(1).filter(|n| !n.starts_with('#')).take(n_args).collect::<Vec<&str>>();
+    let arg_names = arg_names
+      .split('\0')
+      .skip(1)
+      .filter(|n| !n.starts_with('#'))
+      .take(n_args)
+      .collect::<Vec<&str>>();
     let arg_types =
       jl_eval_string(c_str!("typeof(Scan.scan).name.mt.defs.sig.types")) as *mut jl_svec_t;
     let arg_types = from_raw_parts(

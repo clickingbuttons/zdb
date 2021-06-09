@@ -169,7 +169,7 @@ pub struct PartitionIterator<'a> {
   ts_column: Column,
   columns: Vec<TableColumnMeta<'a>>,
   table_name: String,
-  partitions: Vec<(&'a String, &'a PartitionMeta)>,
+  pub partitions: Vec<(&'a String, &'a PartitionMeta)>,
   partition_index: usize
 }
 
@@ -293,27 +293,55 @@ mod tests {
   #[test]
   fn test_binary_search_seek() {
     let data = TestColumn {
-      data: &[1,2,2,2,2,2,3,4,5,5,5,5,5,5,6,7,8,10]
+      data: &[1, 2, 2, 2, 2, 2, 3, 4, 5, 5, 5, 5, 5, 5, 6, 7, 8, 10]
     };
-    assert_eq!(binary_search_seek!(data, data.data.len(), 2, true, i64), Ok(1));
-    assert_eq!(binary_search_seek!(data, data.data.len(), 2, false, i64), Ok(5 + 1));
-    assert_eq!(binary_search_seek!(data, data.data.len(), 5, true, i64), Ok(8));
-    assert_eq!(binary_search_seek!(data, data.data.len(), 5, false, i64), Ok(13 + 1));
-    assert_eq!(binary_search_seek!(data, data.data.len(), 9, false, i64), Err(data.data.len() - 1));
-    assert_eq!(binary_search_seek!(data, data.data.len(), 10, false, i64), Ok(data.data.len()));
-    assert_eq!(binary_search_seek!(data, data.data.len(), 21, false, i64), Err(data.data.len()));
+    assert_eq!(
+      binary_search_seek!(data, data.data.len(), 2, true, i64),
+      Ok(1)
+    );
+    assert_eq!(
+      binary_search_seek!(data, data.data.len(), 2, false, i64),
+      Ok(5 + 1)
+    );
+    assert_eq!(
+      binary_search_seek!(data, data.data.len(), 5, true, i64),
+      Ok(8)
+    );
+    assert_eq!(
+      binary_search_seek!(data, data.data.len(), 5, false, i64),
+      Ok(13 + 1)
+    );
+    assert_eq!(
+      binary_search_seek!(data, data.data.len(), 9, false, i64),
+      Err(data.data.len() - 1)
+    );
+    assert_eq!(
+      binary_search_seek!(data, data.data.len(), 10, false, i64),
+      Ok(data.data.len())
+    );
+    assert_eq!(
+      binary_search_seek!(data, data.data.len(), 21, false, i64),
+      Err(data.data.len())
+    );
 
-    let data = TestColumn {
-      data: &[1]
-    };
-    assert_eq!(binary_search_seek!(data, data.data.len(), 1, true, i64), Ok(0));
-    assert_eq!(binary_search_seek!(data, data.data.len(), 1, false, i64), Ok(1));
+    let data = TestColumn { data: &[1] };
+    assert_eq!(
+      binary_search_seek!(data, data.data.len(), 1, true, i64),
+      Ok(0)
+    );
+    assert_eq!(
+      binary_search_seek!(data, data.data.len(), 1, false, i64),
+      Ok(1)
+    );
 
-    let data = TestColumn {
-      data: &[]
-    };
-    assert_eq!(binary_search_seek!(data, data.data.len(), 1, true, i64), Err(0));
-    assert_eq!(binary_search_seek!(data, data.data.len(), 1, false, i64), Err(0));
+    let data = TestColumn { data: &[] };
+    assert_eq!(
+      binary_search_seek!(data, data.data.len(), 1, true, i64),
+      Err(0)
+    );
+    assert_eq!(
+      binary_search_seek!(data, data.data.len(), 1, false, i64),
+      Err(0)
+    );
   }
 }
-
