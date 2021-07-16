@@ -73,7 +73,6 @@ impl Table {
       })
       .collect::<Vec<(&String, &PartitionMeta)>>();
     partitions.sort_by_key(|(_partition_dir, partition_meta)| partition_meta.from_ts);
-    // println!("partitions {:?}", partitions);
     let ts_column = self.schema.columns[0].clone();
 
     PartitionIterator {
@@ -230,7 +229,8 @@ impl<'a> Iterator for PartitionIterator<'a> {
         partition_meta.row_count,
         &self.ts_column
       );
-      find_ts(&ts_column, self.from_ts - partition_meta.min_ts, true)
+      let needle = if ts_column.resolution == 1 { self.from_ts } else { self.from_ts - partition_meta.min_ts };
+      find_ts(&ts_column, needle, true)
     } else {
       0
     };
@@ -242,12 +242,11 @@ impl<'a> Iterator for PartitionIterator<'a> {
         partition_meta.row_count,
         &self.ts_column
       );
-      // Add one to be inclusive of the end row
-      find_ts(&ts_column, self.to_ts - partition_meta.min_ts, false)
+      let needle = if ts_column.resolution == 1 { self.to_ts } else { self.to_ts - partition_meta.min_ts };
+      find_ts(&ts_column, needle, false)
     } else {
       partition_meta.row_count
     };
-    // println!("{} {} {}", partition_dir, start_row, end_row);
     let data_columns = self
       .columns
       .iter()

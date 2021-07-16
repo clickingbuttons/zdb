@@ -52,6 +52,7 @@ pub fn string_to_nanoseconds(value: &str) -> std::io::Result<i64> {
       return Ok(nanoseconds);
     }
   }
+  // TODO: check date is in valid range before calling timestamp_nanos
   match DateTime::parse_from_rfc3339(&value) {
     Ok(date) => Ok(date.timestamp_nanos()),
     Err(_e) => match NaiveDate::parse_from_str(&value, &NICE_FORMAT) {
@@ -118,30 +119,30 @@ pub struct Query {
 }
 
 unsafe fn get_julia_1d_array(
-  partition: &PartitionColumn,
+  partition_col: &PartitionColumn,
   arg_type: &*mut jl_datatype_t,
   tmp_columns: &mut Vec<Vec<i64>>
 ) -> *mut jl_value_t {
-  if partition.column.r#type == ColumnType::Timestamp && partition.column.size != 8 {
-    let mut timestamps: Vec<i64> = Vec::with_capacity(partition.row_count);
+  if partition_col.column.r#type == ColumnType::Timestamp && partition_col.column.size != 8 {
+    let mut timestamps: Vec<i64> = Vec::with_capacity(partition_col.row_count);
     let ptr = timestamps.as_ptr();
     // TODO: SIMD
-    for i in 0..partition.row_count {
-      timestamps.push(partition.get_timestamp(i));
+    for i in 0..partition_col.row_count {
+      timestamps.push(partition_col.get_timestamp(i));
     }
     tmp_columns.push(timestamps);
     // Let julia deal with freeing it
     return jl_ptr_to_array_1d(
       *arg_type as *mut jl_value_t,
       ptr as *mut c_void,
-      partition.row_count,
+      partition_col.row_count,
       0
     ) as *mut jl_value_t;
   }
   return jl_ptr_to_array_1d(
     *arg_type as *mut jl_value_t,
-    partition.get_u8().as_mut_ptr() as *mut c_void,
-    partition.row_count,
+    partition_col.get_u8().as_mut_ptr() as *mut c_void,
+    partition_col.row_count,
     0
   ) as *mut jl_value_t;
 }
@@ -220,8 +221,8 @@ pub fn run_query(query: &Query) -> std::io::Result<*mut jl_value_t> {
     for partition in partitions {
       let mut args: Vec<*mut jl_value_t> = Vec::new();
       let mut tmp_columns: Vec<Vec<i64>> = Vec::new();
-      for (partition, arg_type) in partition.iter().zip(arg_types.iter()) {
-        args.push(get_julia_1d_array(partition, arg_type, &mut tmp_columns));
+      for (partition_col, arg_type) in partition.iter().zip(arg_types.iter()) {
+        args.push(get_julia_1d_array(partition_col, arg_type, &mut tmp_columns));
       }
       res = jl_call(scan_fn, args.as_mut_ptr(), args.len() as i32);
       check_julia_error!(stream);

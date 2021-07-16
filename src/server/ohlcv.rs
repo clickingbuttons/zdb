@@ -1,4 +1,4 @@
-use crate::{server::query::string_to_nanoseconds, table::Table};
+use crate::{server::query::string_to_nanoseconds, table::Table, schema::ColumnType};
 use serde::Serialize;
 use std::{
   collections::HashMap,
@@ -118,7 +118,13 @@ pub fn ohlcv(path: &str) -> std::io::Result<Vec<u8>> {
       ohlcvs.h.push(partition[3].get_currency()[i]);
       ohlcvs.l.push(partition[4].get_currency()[i]);
       ohlcvs.c.push(partition[5].get_currency()[i]);
-      ohlcvs.v.push(partition[6].get_u64()[i]);
+      ohlcvs.v.push(match partition[6].column.r#type {
+        ColumnType::U64 => partition[6].get_u64()[i],
+        ColumnType::U32 => partition[6].get_u32()[i] as u64,
+        ColumnType::U16 => partition[6].get_u16()[i] as u64,
+        ColumnType::U8 => partition[6].get_u8()[i] as u64,
+        _ => panic!("Unsupported volume column type {:?}", partition[6].column.r#type)
+      });
     }
   }
 
