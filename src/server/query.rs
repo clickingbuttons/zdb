@@ -14,7 +14,7 @@ use std::{
 };
 
 macro_rules! check_julia_error {
-  ($stream:expr) => {
+  () => {
     // https://github.com/JuliaLang/julia/blob/f6b51abb294998571ff88a95b50a15ce062a2994/test/embedding/embedding.c
     if !jl_exception_occurred().is_null() {
       // https://discourse.julialang.org/t/julia-exceptions-in-c/18387
@@ -123,7 +123,7 @@ unsafe fn get_julia_1d_array(
   arg_type: &*mut jl_datatype_t,
   tmp_columns: &mut Vec<Vec<i64>>
 ) -> *mut jl_value_t {
-  if partition_col.column.r#type == ColumnType::Timestamp && partition_col.column.size != 8 {
+  let ptr = if partition_col.column.r#type == ColumnType::Timestamp && partition_col.column.size != 8 {
     let mut timestamps: Vec<i64> = Vec::with_capacity(partition_col.row_count);
     let ptr = timestamps.as_ptr();
     // TODO: SIMD
@@ -131,23 +131,20 @@ unsafe fn get_julia_1d_array(
       timestamps.push(partition_col.get_timestamp(i));
     }
     tmp_columns.push(timestamps);
-    // Let julia deal with freeing it
-    return jl_ptr_to_array_1d(
-      *arg_type as *mut jl_value_t,
-      ptr as *mut c_void,
-      partition_col.row_count,
-      0
-    ) as *mut jl_value_t;
-  }
+    ptr as *mut c_void
+  } else {
+    partition_col.get_u8().as_mut_ptr() as *mut c_void
+  };
+
   return jl_ptr_to_array_1d(
     *arg_type as *mut jl_value_t,
-    partition_col.get_u8().as_mut_ptr() as *mut c_void,
+    ptr,
     partition_col.row_count,
-    0
+    0 // Let julia deal with freeing it
   ) as *mut jl_value_t;
 }
 
-pub fn run_query(query: &Query) -> std::io::Result<*mut jl_value_t> {
+pub fn run_query(query: &mut Query) -> std::io::Result<*mut jl_value_t> {
   let table = Table::open(&query.table);
   if let Err(_e) = table {
     let err = format!("table \"{}\" does not exist", query.table);
@@ -159,7 +156,7 @@ pub fn run_query(query: &Query) -> std::io::Result<*mut jl_value_t> {
   let jl_string = CString::new(format!("module Scan {}\nend", query.query)).unwrap();
   unsafe {
     jl_eval_string(jl_string.as_ptr());
-    check_julia_error!(stream);
+    check_julia_error!();
     let scan_fn = jl_eval_string(c_str!("Scan.scan"));
     if !jl_exception_occurred().is_null() || !jl_typeis(scan_fn, jl_function_type) {
       return Err(Error::new(
@@ -225,7 +222,7 @@ pub fn run_query(query: &Query) -> std::io::Result<*mut jl_value_t> {
         args.push(get_julia_1d_array(partition_col, arg_type, &mut tmp_columns));
       }
       res = jl_call(scan_fn, args.as_mut_ptr(), args.len() as i32);
-      check_julia_error!(stream);
+      check_julia_error!();
     }
     println!("scan {:?}", now.elapsed());
     // jl_call1(jl_eval_string(c_str!("println")), res);

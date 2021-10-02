@@ -63,8 +63,13 @@ pub fn ohlcv(path: &str) -> std::io::Result<Vec<u8>> {
       "url must be in format /ohlcv/{table}/{from}/{to}"
     ));
   }
-  let from = string_to_nanoseconds(from.unwrap())?;
-  let to = string_to_nanoseconds(to.unwrap())?;
+  let mut from = string_to_nanoseconds(from.unwrap())?;
+  let mut to = string_to_nanoseconds(to.unwrap())?;
+  if from > to {
+    let tmp = from;
+    from = to;
+    to = tmp;
+  }
   let table = Table::open(&table_name.unwrap())?;
 
   let partitions = table.partition_iter(from, to, vec![

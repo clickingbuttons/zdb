@@ -228,7 +228,7 @@ const fmtDate = uPlot.fmtDate("{YYYY}-{MM}-{DD}");
 const tzDate = ts => uPlot.tzDate(new Date(ts * 1e3), "Etc/UTC");
 
 const opts = {
-  width: 400,
+  width: 400 * 8,
   height: 400,
   title: 'Untitled',
   plugins: [

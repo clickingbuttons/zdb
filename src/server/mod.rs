@@ -13,6 +13,30 @@ use std::{io::prelude::*, net::TcpStream};
 static mut BUFFER: [u8; 1024] = [0; 1024];
 static mut BODY_BUFFER: [u8; 1024] = [0; 1024];
 
+pub fn write_contents(
+  mut stream: TcpStream,
+  code: i64,
+  contents: &[u8],
+  headers: Option<Vec<(&str, &str)>>
+) {
+  let mut headers = headers.unwrap_or_default();
+  let content_len = contents.len().to_string();
+  headers.push(("content-length", &content_len));
+  headers.push(("access-control-allow-origin", "*"));
+  let header = format!(
+    "HTTP/1.1 {} OK\n{}\n\n",
+    code,
+    headers
+      .iter()
+      .map(|(key, val)| format!("{}: {}", key, val))
+      .collect::<Vec<String>>()
+      .join("\r\n")
+  );
+  stream.write(header.as_bytes()).unwrap();
+  stream.write(contents).unwrap();
+  stream.flush().unwrap();
+}
+
 pub fn handle_connection(mut stream: TcpStream, process_num: i64) {
   let len = unsafe { stream.read(&mut BUFFER).unwrap() };
   let mut headers = [httparse::EMPTY_HEADER; 16];
@@ -117,7 +141,7 @@ pub fn handle_connection(mut stream: TcpStream, process_num: i64) {
         let err = format!("error parsing body: {}", err.to_string());
         return write_contents(stream, 400, err.as_bytes(), None);
       }
-      Ok(query) => match run_query(&query) {
+      Ok(mut query) => match run_query(&mut query) {
         Ok(value) => {
           let serialized = serialize_jl_value(value);
           // let res = format!("{:#04x?}", serialized);
@@ -129,26 +153,3 @@ pub fn handle_connection(mut stream: TcpStream, process_num: i64) {
   }
 }
 
-pub fn write_contents(
-  mut stream: TcpStream,
-  code: i64,
-  contents: &[u8],
-  headers: Option<Vec<(&str, &str)>>
-) {
-  let mut headers = headers.unwrap_or_default();
-  let content_len = contents.len().to_string();
-  headers.push(("content-length", &content_len));
-  headers.push(("access-control-allow-origin", "*"));
-  let header = format!(
-    "HTTP/1.1 {} OK\n{}\n\n",
-    code,
-    headers
-      .iter()
-      .map(|(key, val)| format!("{}: {}", key, val))
-      .collect::<Vec<String>>()
-      .join("\r\n")
-  );
-  stream.write(header.as_bytes()).unwrap();
-  stream.write(contents).unwrap();
-  stream.flush().unwrap();
-}
