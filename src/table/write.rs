@@ -131,7 +131,7 @@ impl Table {
         let symbols = &mut column_symbols.symbols;
         symbol_nums.insert(val.clone(), symbols.len());
         symbols.push(val);
-        symbols.len() - 1
+        symbols.len()
       }
     };
     let column = &self.columns[self.column_index];
