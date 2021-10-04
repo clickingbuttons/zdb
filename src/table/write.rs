@@ -120,8 +120,6 @@ impl Table {
     };
   }
 
-  pub fn put_currency(&mut self, val: f32) { self.put_f32(val) }
-
   pub fn put_symbol(&mut self, val: String) {
     let column_symbols = &mut self.column_symbols[self.column_index];
     let symbol_nums = &mut column_symbols.symbol_nums;
@@ -129,8 +127,8 @@ impl Table {
       Some(i) => *i,
       None => {
         let symbols = &mut column_symbols.symbols;
-        symbol_nums.insert(val.clone(), symbols.len());
-        symbols.push(val);
+        symbols.push(val.clone());
+        symbol_nums.insert(val, symbols.len());
         symbols.len()
       }
     };

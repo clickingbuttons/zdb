@@ -4,7 +4,6 @@ use std::{cmp::PartialEq, fmt, path::PathBuf};
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq)]
 pub enum ColumnType {
   Timestamp,
-  Currency,
   Symbol8,  // 256 symbols
   Symbol16, // 65536 symbols
   Symbol32, // 4294967296 symbols
@@ -38,7 +37,6 @@ impl Column {
       resolution: 1,
       size: match r#type {
         ColumnType::Timestamp => 8,
-        ColumnType::Currency => 4,
         ColumnType::Symbol8 => 1,
         ColumnType::Symbol16 => 2,
         ColumnType::Symbol32 => 4,

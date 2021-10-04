@@ -57,11 +57,11 @@ fn write_rows(rows: Vec<OHLCV>, index: i64) {
   let schema = Schema::new(&format!("agg1d{}", index))
     .add_cols(vec![
       Column::new("ticker", ColumnType::Symbol16),
-      Column::new("open", ColumnType::Currency),
-      Column::new("high", ColumnType::Currency),
-      Column::new("low", ColumnType::Currency),
-      Column::new("close", ColumnType::Currency),
-      Column::new("close_un", ColumnType::Currency),
+      Column::new("open", ColumnType::F32),
+      Column::new("high", ColumnType::F32),
+      Column::new("low", ColumnType::F32),
+      Column::new("close", ColumnType::F32),
+      Column::new("close_un", ColumnType::F32),
       Column::new("volume", ColumnType::U64),
     ])
     .partition_by(PartitionBy::Year);
@@ -75,11 +75,11 @@ fn write_rows(rows: Vec<OHLCV>, index: i64) {
     };
     agg1d.put_timestamp(ts + r.ts);
     agg1d.put_symbol(r.symbol);
-    agg1d.put_currency(r.open);
-    agg1d.put_currency(r.high);
-    agg1d.put_currency(r.low);
-    agg1d.put_currency(r.close);
-    agg1d.put_currency(r.close_un);
+    agg1d.put_f32(r.open);
+    agg1d.put_f32(r.high);
+    agg1d.put_f32(r.low);
+    agg1d.put_f32(r.close);
+    agg1d.put_f32(r.close_un);
     agg1d.put_u64(r.volume);
     agg1d.write();
   }

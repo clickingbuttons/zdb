@@ -58,6 +58,7 @@ impl Table {
       .collect::<Vec<_>>()
   }
 
+  /* Inclusive of from and to */
   pub fn partition_iter(&self, from_ts: i64, to_ts: i64, columns: Vec<&str>) -> PartitionIterator {
     assert!(to_ts >= from_ts);
     let mut partitions = self
@@ -108,8 +109,6 @@ macro_rules! get_partition_slice {
 }
 
 impl<'a> PartitionColumn<'_> {
-  pub fn get_currency(&self) -> &[f32] { self.get_f32() }
-
   pub fn get_i8(&self) -> &mut [i8] { get_partition_slice!(self.slice, i8) }
 
   pub fn get_u8(&self) -> &mut [u8] { get_partition_slice!(self.slice, u8) }

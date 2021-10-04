@@ -119,10 +119,10 @@ pub fn ohlcv(path: &str) -> std::io::Result<Vec<u8>> {
         res.min_date = ts;
       }
       ohlcvs.t.push(ts);
-      ohlcvs.o.push(partition[2].get_currency()[i]);
-      ohlcvs.h.push(partition[3].get_currency()[i]);
-      ohlcvs.l.push(partition[4].get_currency()[i]);
-      ohlcvs.c.push(partition[5].get_currency()[i]);
+      ohlcvs.o.push(partition[2].get_f32()[i]);
+      ohlcvs.h.push(partition[3].get_f32()[i]);
+      ohlcvs.l.push(partition[4].get_f32()[i]);
+      ohlcvs.c.push(partition[5].get_f32()[i]);
       ohlcvs.v.push(match partition[6].column.r#type {
         ColumnType::U64 => partition[6].get_u64()[i],
         ColumnType::U32 => partition[6].get_u32()[i] as u64,

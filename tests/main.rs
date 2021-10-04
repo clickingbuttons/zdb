@@ -70,11 +70,11 @@ fn write_rows(table: &mut Table, rows: Vec<OHLCV>) {
   for r in rows {
     table.put_timestamp(r.ts);
     table.put_symbol(r.sym);
-    table.put_currency(r.open);
-    table.put_currency(r.high);
-    table.put_currency(r.low);
-    table.put_currency(r.close);
-    table.put_currency(r.close_un);
+    table.put_f32(r.open);
+    table.put_f32(r.high);
+    table.put_f32(r.low);
+    table.put_f32(r.close);
+    table.put_f32(r.close_un);
     table.put_u64(r.volume);
     table.write();
   }
@@ -88,11 +88,11 @@ fn write_ohlcv(table_name: &str, freq: usize, row_count: usize) -> std::io::Resu
     .add_cols(vec![
       Column::new("ts", ColumnType::Timestamp).with_resolution(freq as i64 * 1_000_000_000),
       Column::new("ticker", ColumnType::Symbol16),
-      Column::new("open", ColumnType::Currency),
-      Column::new("high", ColumnType::Currency),
-      Column::new("low", ColumnType::Currency),
-      Column::new("close", ColumnType::Currency),
-      Column::new("close_un", ColumnType::Currency),
+      Column::new("open", ColumnType::F32),
+      Column::new("high", ColumnType::F32),
+      Column::new("low", ColumnType::F32),
+      Column::new("close", ColumnType::F32),
+      Column::new("close_un", ColumnType::F32),
       Column::new("volume", ColumnType::U64),
     ])
     .partition_by(PartitionBy::Day);
@@ -134,10 +134,10 @@ fn sum_ohlcv_rust() {
       .iter()
       .map(|ts| *ts as u64)
       .sum::<u64>();
-    sums.1 += get_f64_sum(partition[1].get_currency());
-    sums.2 += get_f64_sum(partition[2].get_currency());
-    sums.3 += get_f64_sum(partition[3].get_currency());
-    sums.4 += get_f64_sum(partition[4].get_currency());
+    sums.1 += get_f64_sum(partition[1].get_f32());
+    sums.2 += get_f64_sum(partition[2].get_f32());
+    sums.3 += get_f64_sum(partition[3].get_f32());
+    sums.4 += get_f64_sum(partition[4].get_f32());
     sums.5 += partition[5].get_u64().iter().sum::<u64>();
     total += partition[5].get_u64().iter().len();
   }
@@ -172,14 +172,14 @@ fn sum_ohlcv_julia() {
       (total, sums)
     end";
 
-  let query = Query {
+  let mut query = Query {
     table: TABLE_NAME.to_string(),
     from:  FROM_TS,
     to:    TO_TS,
     query: query.to_string()
   };
 
-  let ans = run_query(&query);
+  let ans = run_query(&mut query);
   assert!(ans.is_ok());
   let ans = ans.unwrap();
   unsafe {
@@ -205,8 +205,8 @@ fn sum_ticks_rust() {
   let mut total = 0;
   let partitions = table.partition_iter(FROM_TS, TO_TS, vec!["open"]);
   for partition in partitions {
-    sum += get_f64_sum(partition[0].get_currency());
-    total += partition[0].get_currency().iter().len();
+    sum += get_f64_sum(partition[0].get_f32());
+    total += partition[0].get_f32().iter().len();
   }
   assert_eq!(sum, 431907.90271890163);
   assert_eq!(total, ROW_COUNT * 10);
@@ -235,14 +235,14 @@ fn sum_ticks_julia() {
       global sums[5] += sum(volume)
       (total, sums)
     end";
-  let query = Query {
+  let mut query = Query {
     table: TICKS_NAME.to_string(),
     from:  FROM_TS,
     to:    TO_TS,
     query: query.to_string()
   };
 
-  let ans = run_query(&query);
+  let ans = run_query(&mut query);
   assert!(ans.is_ok());
   let ans = ans.unwrap();
   unsafe {

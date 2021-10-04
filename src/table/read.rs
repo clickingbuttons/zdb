@@ -64,7 +64,7 @@ pub fn read_column_symbols(data_path: &PathBuf, schema: &Schema) -> Vec<TableCol
     let mut symbol_nums =
       FnvHashMap::with_capacity_and_hasher(get_capacity(&column), Default::default());
     for (i, symbol) in symbols.iter().enumerate() {
-      symbol_nums.insert(symbol.clone(), i);
+      symbol_nums.insert(symbol.clone(), i + 1);
     }
     let col_syms = TableColumnSymbols {
       symbols,

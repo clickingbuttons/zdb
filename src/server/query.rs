@@ -36,7 +36,7 @@ fn get_expected_type(column: &Column) -> *mut jl_datatype_t {
       ColumnType::U16 | ColumnType::Symbol16 => jl_uint16_type,
       ColumnType::U32 | ColumnType::Symbol32 => jl_uint32_type,
       ColumnType::U64 => jl_uint64_type,
-      ColumnType::F32 | ColumnType::Currency => jl_float32_type,
+      ColumnType::F32 => jl_float32_type,
       ColumnType::F64 => jl_float64_type,
       ColumnType::Timestamp => jl_int64_type
     }
