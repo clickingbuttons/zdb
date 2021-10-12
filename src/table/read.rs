@@ -12,7 +12,12 @@ use std::{
 
 pub fn get_symbols_path(data_path: &PathBuf, column: &Column) -> PathBuf {
   let mut path = data_path.clone();
-  path.push(&column.name);
+  if column.sym_name.is_empty() {
+    path.push(&column.name);
+  } else {
+    path.pop();
+    path.push(&column.sym_name);
+  }
   path.set_extension("symbols");
   path
 }

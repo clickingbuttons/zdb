@@ -104,19 +104,10 @@ impl Table {
         )
       ));
     }
-    let column_symbols = schema
-      .columns
-      .iter()
-      .map(|c| TableColumnSymbols {
-        symbol_nums: FnvHashMap::with_capacity_and_hasher(get_capacity(&c), Default::default()),
-        symbols:     Vec::<String>::with_capacity(get_capacity(&c)),
-        path:        get_symbols_path(&data_path, &c)
-      })
-      .collect::<Vec<_>>();
 
     let table = Table {
       columns: Vec::new(),
-      column_symbols,
+      column_symbols: read_column_symbols(&data_path, &schema),
       schema,
       dir_index: 0,
       column_index: 0,

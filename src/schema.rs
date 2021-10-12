@@ -26,7 +26,9 @@ pub struct Column {
   // How many bytes each row of the column takes
   pub size:       usize,
   // If timestamp column what nanoseconds to divide by. Can be used to shrink column size
-  pub resolution: i64
+  pub resolution: i64,
+  // If symbol column what filename to use
+  pub sym_name:   String,
 }
 
 impl Column {
@@ -50,12 +52,18 @@ impl Column {
         ColumnType::I64 => 8,
         ColumnType::U64 => 8,
         ColumnType::F64 => 8
-      }
+      },
+      sym_name: String::new()
     }
   }
 
   pub fn with_resolution(mut self, resolution_nanos: i64) -> Column {
     self.resolution = resolution_nanos;
+    self
+  }
+
+  pub fn with_sym_name(mut self, sym_name: &str) -> Column {
+    self.sym_name = String::from(sym_name);
     self
   }
 }

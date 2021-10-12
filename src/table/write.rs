@@ -18,7 +18,7 @@ impl Table {
   fn put_bytes(&mut self, bytes: &[u8]) {
     let size = bytes.len();
     let offset = self.cur_partition_meta.row_count * size;
-    // println!("put_bytes {} {}", self.column_index, self.cur_partition_meta.row_count);
+    // println!("put {} bytes {} {}", size, self.column_index, self.cur_partition_meta.row_count);
     self.columns[self.column_index].data[offset..offset + size].copy_from_slice(bytes);
     self.column_index += 1;
   }
@@ -78,7 +78,7 @@ impl Table {
           Some(meta) => {
             if val < meta.to_ts {
               panic!(
-                "Timestamp {} is out of order (previous ts is {})",
+                "Timestamp {} is out of order (previous {})",
                 val, meta.to_ts
               );
             }
@@ -169,6 +169,7 @@ impl Table {
       let symbols_text = table_col_symbols.symbols.join("\n");
       let path = &table_col_symbols.path;
 
+      // TODO: lock file
       let mut f = OpenOptions::new()
         .write(true)
         .create(true)
@@ -187,8 +188,7 @@ impl Table {
     // Check if next write will be larger than file
     for c in &mut self.columns {
       let size = c.data.len();
-      let row_size = c.size;
-      if size <= row_size * (self.cur_partition_meta.row_count + 1) {
+      if size <= c.size * (self.cur_partition_meta.row_count + 1) {
         let size = c.data.len() as u64;
         // println!("Grow {} from {} to {}", c.name, size, size * 2);
         // Unmap by dropping c.data
@@ -201,7 +201,7 @@ impl Table {
         unsafe {
           c.data = memmap::MmapOptions::new()
             .map_mut(&c.file)
-            .unwrap_or_else(|_| panic!("Could not mmapp {:?}", c.file));
+            .unwrap_or_else(|_| panic!("Could not mmapp after grow {:?}", c.file));
         }
         // TODO: remove memmap dep and use mremap on *nix
         // https://man7.org/linux/man-pages/man2/mremap.2.html
